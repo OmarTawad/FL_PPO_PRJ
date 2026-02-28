@@ -1,0 +1,51 @@
+# configs/exp0_validate.yaml
+# Minimal validation config for config.py consistency checks.
+# Not a real experiment — used only to test config loader.
+
+experiment:
+  name: exp0_validate
+  rounds: 3
+  seed: 42
+  dropout_mode: stochastic
+
+clients:
+  count: 3
+  profiles:
+    - id: 0
+      profile: strong
+      mem_limit_mb: 2048
+      cpu_cores: 1.5
+      # data_fraction omitted → auto-split, sum must == 1.0
+    - id: 1
+      profile: medium
+      mem_limit_mb: 1024
+      cpu_cores: 1.0
+    - id: 2
+      profile: weak
+      mem_limit_mb: 512
+      cpu_cores: 0.5
+
+data:
+  dataset: cifar10
+  partition: iid
+  reduced_fraction: 1.0
+
+quantization:
+  mode: adaptive          # no fixed_bits validation should fire here (fix H)
+
+fl:
+  local_epochs: 1
+  batch_size: 32
+  num_workers: 0
+  pin_memory: false
+  optimizer: sgd
+  lr: 0.01
+  momentum: 0.9
+  min_clients_per_round: 1
+
+rl:
+  algorithm: ppo
+  total_timesteps: 3
+  reward_alpha: 1.0
+  reward_beta: 0.5
+  reward_gamma_var: 0.1
