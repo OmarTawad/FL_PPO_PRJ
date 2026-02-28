@@ -257,11 +257,25 @@ def try_static_int8(
     if backend is None:
         selected = auto_select_backend(model, calib_loader)
         if selected is None:
-            # All backends failed probe — skip the full pipeline, go to fallback
-            raise RuntimeError(
+            # All backends failed probe — invoke fallback INLINE (never crash).
+            # RuntimeError here would be outside the try/except below, breaking
+            # the "never silent fallback" contract (SPEC.md §4.2).
+            log.warning(
                 f"{QUANT_UNSUPPORTED}: no working INT8 backend found in "
-                f"{torch.backends.quantized.supported_engines}"
+                f"{list(torch.backends.quantized.supported_engines)}. "
+                f"int8_disabled=true. Triggering FP16 fallback."
             )
+            try:
+                fp16_model = _fp16_module.apply(model, inplace=False)
+                log.info("Fallback to FP16 successful → quant_method=fp16_fallback")
+                return fp16_model, "fp16_fallback"
+            except Exception as fp16_err:
+                log.warning(
+                    f"{QUANT_UNSUPPORTED}: FP16 fallback also failed "
+                    f"({type(fp16_err).__name__}). Falling back to FP32. "
+                    f"quant_method=fp32_fallback"
+                )
+                return copy.deepcopy(model).float().eval(), "fp32_fallback"
         backend = selected
         log.info(f"Auto-selected backend='{backend}'")
     else:
