@@ -230,17 +230,18 @@ def test_int8_fallback_injected():
     model = make_model()
     calib = make_calib_loader(n=8)
 
-    # Monkeypatch: make _fuse_mobilenetv2 raise to simulate unsupported op
-    original_fuse = int8_mod._fuse_mobilenetv2
+    # Pass backend='qnnpack' explicitly to skip auto_select_backend() probing.
+    # Patch _fuse_mobilenetv2 to raise immediately inside the try block.
+    orig_fuse = int8_mod._fuse_mobilenetv2
     def _bad_fuse(m):
         raise RuntimeError("Simulated QUANT_UNSUPPORTED: unsupported op DeConv2d")
     int8_mod._fuse_mobilenetv2 = _bad_fuse
 
     try:
         from src.compression.int8 import try_static_int8
-        q_model, method = try_static_int8(model, calib, calibration_samples=8)
+        q_model, method = try_static_int8(model, calib, calibration_samples=8, backend='qnnpack')
     finally:
-        int8_mod._fuse_mobilenetv2 = original_fuse  # restore
+        int8_mod._fuse_mobilenetv2 = orig_fuse  # restore
 
     if method == METHOD_FP16_FALLBACK:
         ok(f"Fallback: method='{method}' (INT8 failed → FP16)")
@@ -401,8 +402,8 @@ def test_fp32_fallback():
     model = make_model()
     calib = make_calib_loader(n=4)
 
-    # Patch _fuse_mobilenetv2 and the _fp16_module reference INSIDE int8_mod
-    # (int8.py uses int8_mod._fp16_module.apply, not fp16_mod.apply directly)
+    # Pass backend='qnnpack' to skip auto_select_backend; patch both
+    # _fuse_mobilenetv2 (INT8 injection) and _fp16_module.apply (FP16 injection)
     orig_fuse = int8_mod._fuse_mobilenetv2
     orig_fp16_apply = int8_mod._fp16_module.apply
 
@@ -414,7 +415,7 @@ def test_fp32_fallback():
 
     try:
         from src.compression.int8 import try_static_int8
-        q_model, method = try_static_int8(model, calib, calibration_samples=4)
+        q_model, method = try_static_int8(model, calib, calibration_samples=4, backend='qnnpack')
     finally:
         int8_mod._fuse_mobilenetv2 = orig_fuse
         int8_mod._fp16_module.apply = orig_fp16_apply
