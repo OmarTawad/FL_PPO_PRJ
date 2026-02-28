@@ -135,16 +135,19 @@ r_t = α · ΔAcc_t  −  β · Dropout_t  −  γ · Var(Q_t)
 2. **Fuseable layer patterns** (Conv → BN → ReLU) — MobileNetV2 supports `torch.ao.quantization.fuse_modules`.
 3. The model must be in **eval mode** during calibration (running statistics collection).
 
-**Known limitation**: Static INT8 calibration introduces **per-round overhead** (calibration requires a forward pass over ~128 samples). FP32/FP16 are fully implemented; static INT8 is implemented in Stage 4 using a 128-sample calibration set.
+**Known limitation**: Static INT8 calibration introduces **per-round overhead** (calibration requires a forward pass over ~128 samples). FP32/FP16 are fully implemented; static INT8 is implemented in Phase 4 using a 128-sample calibration set.
 
-**Fallback policy** (updated per design review):
+**Backend auto-selection** (SPEC.md §4.2 / `src/compression/int8.py`):
+At the start of each INT8 quantization attempt, `try_static_int8()` logs `torch.backends.quantized.supported_engines` and probes each candidate in order: **fbgemm → x86 → onednn → qnnpack**. The first backend that successfully completes fuse → prepare → calibrate → convert → inference is selected. If all fail, fallback is triggered. An explicit `backend=` parameter overrides this.
+
+**Fallback policy** (NEVER silent):
 
 | Condition | Action | Log Key |
 |-----------|--------|--------|
-| Static INT8 conversion succeeds | Use static INT8 | `quant_method: static_int8` |
-| Static INT8 op unsupported (e.g., `DeConv`, custom op) | Log and fall back to **FP16** | `QUANT_UNSUPPORTED`, `quant_method: fp16_fallback` |
+| Auto-selected backend succeeds end-to-end | Use static INT8 | `quant_method: static_int8` |
+| All backends fail probe / op unsupported | Log and fall back to **FP16** | `QUANT_UNSUPPORTED`, `quant_method: fp16_fallback` |
 | FP16 also fails | Fall back to **FP32** | `QUANT_UNSUPPORTED`, `quant_method: fp32_fallback` |
-| INT8 action requested but static conversion failed | **INT8 option disabled for this client this round** | `int8_disabled: true` |
+| INT8 action requested but pipeline failed | **INT8 disabled this client this round** | `int8_disabled: true` |
 
 **This fallback is NEVER silent** — every round JSON logs `quant_method` and `int8_disabled` per client. Dynamic INT8 (`quantize_dynamic`) is NOT used as a fallback; it is excluded to keep the method space clean.
 

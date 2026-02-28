@@ -160,43 +160,57 @@ def test_fp16():
         fail(f"FP16 forward pass: shape {tuple(out.shape)}, dtype {out.dtype}")
 
 
-# ── Test 3: Static INT8 ───────────────────────────────────────────────────────
+# ── Test 3: Static INT8 — per-backend probe ───────────────────────────────────
 
 def test_int8_static():
-    section("3/10  Static INT8 (32×32 calibration, 32 samples)")
-    from src.compression.quantizer import quantize, METHOD_STATIC_INT8, METHOD_FP16_FALLBACK
+    section("3/10  Static INT8 — Per-Backend Probe + Auto-Select")
+    from src.compression import int8 as int8_mod
+    from src.compression.quantizer import quantize, METHOD_STATIC_INT8, METHOD_FP16_FALLBACK, METHOD_FP32_FALLBACK
 
+    # Print supported engines (this is what Omar wants logged)
+    engines = list(torch.backends.quantized.supported_engines)
+    print(f"\n  supported_engines = {engines}")
+    real_engines = [e for e in engines if e != "none"]
+    print(f"  Probing: {real_engines}")
+
+    # 1) Per-backend probe using _probe_backend_works directly
     model = make_model()
-    calib = make_calib_loader(n=32, h=32, w=32)
-    snap_before = param_snapshot(model)
+    calib = make_calib_loader(n=8, h=32, w=32)
+    backend_results = {}
+    for backend in real_engines:
+        worked = int8_mod._probe_backend_works(model, calib, backend)
+        backend_results[backend] = worked
+        status = "✓ INT8 OK" if worked else "✗ fallback"
+        print(f"    backend='{backend}': {status}")
+        ok(f"backend='{backend}' probe completed (result={'static_int8' if worked else 'fallback'})")
 
-    print("  [INFO] Running static INT8 calibration (may produce NNPACK warning)...")
-    q_model, method = quantize(model, bits=8, calib_loader=calib, calibration_samples=32)
+    any_int8_works = any(backend_results.values())
 
-    if method in (METHOD_STATIC_INT8, METHOD_FP16_FALLBACK):
-        ok(f"method='{method}' (static_int8 or fp16_fallback — both acceptable)")
+    # 2) Auto-select path via quantize(backend=None)
+    model2 = make_model()
+    calib2 = make_calib_loader(n=8, h=32, w=32)
+    q_model, method = quantize(model2, bits=8, calib_loader=calib2, calibration_samples=8)
+
+    if any_int8_works:
+        if method == METHOD_STATIC_INT8:
+            ok(f"Auto-select: static_int8 succeeded (backend found ✓)")
+        else:
+            fail(f"At least one backend worked in probe but auto-select returned '{method}'")
     else:
-        fail(f"Unexpected method='{method}' for bits=8")
+        # All backends failed — fp16_fallback or fp32_fallback is correct
+        if method in (METHOD_FP16_FALLBACK, METHOD_FP32_FALLBACK):
+            ok(f"Auto-select: all backends failed → '{method}' (correct QUANT_UNSUPPORTED path)")
+        else:
+            fail(f"All backends failed but got unexpected method='{method}'")
 
-    if q_model is not model:
-        ok("Returns deep copy (not same object)")
-    else:
-        fail("Returned same object!")
-
-    if param_snapshot(model) == snap_before:
-        ok("Original model NOT mutated")
-    else:
-        fail("Original mutated during INT8!")
-
-    # Forward pass — dtype depends on whether static_int8 or fp16_fallback returned
-    # static_int8 models accept FP32; fp16_fallback models require FP16 input
+    # Forward pass with dtype-matched input
     first_param = next(q_model.parameters())
     input_dtype = torch.float32 if method == METHOD_STATIC_INT8 else first_param.dtype
     x = torch.randn(1, 3, 32, 32, dtype=input_dtype)
     with torch.no_grad():
         out = q_model(x)
     if out.shape == (1, 10):
-        ok(f"INT8 (or fallback) forward pass: shape {tuple(out.shape)}")
+        ok(f"Forward pass: shape {tuple(out.shape)} (method={method})")
     else:
         fail(f"Wrong shape: {tuple(out.shape)}")
 

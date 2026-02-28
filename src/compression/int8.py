@@ -3,7 +3,7 @@ src/compression/int8.py — Static INT8 quantization for MobileNetV2
 
 Paper: Adaptive FL with PPO-based Client and Quantization Selection
 
-Pipeline: fuse → prepare (insert observers) → calibrate (128 samples) → convert
+Pipeline: fuse → prepare (insert observers) → calibrate (128 samples) → convert → verify_inference
 
 Fallback chain (NEVER silent):
     static INT8 fails  →  log QUANT_UNSUPPORTED  →  return FP16 model
@@ -11,7 +11,10 @@ Fallback chain (NEVER silent):
 
 Dynamic INT8 (quantize_dynamic) is NEVER used as a fallback (SPEC.md §4.2).
 
-Backend: qnnpack (recommended for ARM/CPU; also works on x86 in PyTorch).
+Backend auto-selection (SPEC.md §4.2):
+    try_static_int8() probes torch.backends.quantized.supported_engines at runtime
+    and picks the first working backend in order: fbgemm → x86 → onednn → qnnpack.
+    Pass backend='qnnpack' (or any other) to override.
 
 Usage:
     from src.compression.int8 import try_static_int8, QUANT_UNSUPPORTED
@@ -23,7 +26,7 @@ from __future__ import annotations
 
 import copy
 import logging
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -33,12 +36,67 @@ from src.compression import fp16 as _fp16_module  # used for fallback chain
 # Log key emitted on every fallback (SPEC.md §4.2)
 QUANT_UNSUPPORTED = "QUANT_UNSUPPORTED"
 
+# Backend preference order — outer try goes through these in order
+_BACKEND_PREFERENCE = ["fbgemm", "x86", "onednn", "qnnpack"]
+
 log = logging.getLogger(__name__)
 
-# MobileNetV2 ConvBNActivation triplets to fuse.
-# format: list of [parent_attr_path, [conv, bn, act]] per InvertedResidual block.
-# We discover them dynamically instead of hardcoding to handle model variants.
 
+# ─── Backend helpers ──────────────────────────────────────────────────────────
+
+def _log_supported_engines() -> List[str]:
+    """Log available quantized engines and return the list."""
+    engines = list(torch.backends.quantized.supported_engines)
+    log.info(f"torch.backends.quantized.supported_engines = {engines}")
+    log.info(f"default engine = {torch.backends.quantized.engine}")
+    return engines
+
+
+def _probe_backend_works(model: nn.Module, calib_loader: DataLoader, backend: str) -> bool:
+    """
+    Quick 1-batch probe: fuse → prepare → calibrate → convert → infer.
+    Returns True if the backend runs INT8 end-to-end. Does NOT mutate model.
+    """
+    try:
+        m = copy.deepcopy(model).float().eval()
+        m = _fuse_mobilenetv2(m)
+        torch.backends.quantized.engine = backend
+        m.qconfig = torch.quantization.get_default_qconfig(backend)
+        torch.quantization.prepare(m, inplace=True)
+        with torch.no_grad():
+            for imgs, _ in calib_loader:
+                m(imgs.float()); break
+        torch.quantization.convert(m, inplace=True)
+        with torch.no_grad():
+            for imgs, _ in calib_loader:
+                m(imgs.float()); break
+        return True
+    except Exception as e:
+        log.debug(f"  backend='{backend}' probe: {type(e).__name__}: {str(e)[:80]}")
+        return False
+
+
+def auto_select_backend(model: nn.Module, calib_loader: DataLoader) -> Optional[str]:
+    """
+    Probe supported_engines in preference order (fbgemm→x86→onednn→qnnpack).
+    Returns the first working backend name, or None if none work.
+    'none' is skipped — not a real quantization backend.
+    """
+    available = set(torch.backends.quantized.supported_engines) - {"none"}
+    log.info(f"Auto-selecting INT8 backend from: {_BACKEND_PREFERENCE}")
+    for backend in _BACKEND_PREFERENCE:
+        if backend not in available:
+            continue
+        log.info(f"  Probing backend='{backend}'...")
+        if _probe_backend_works(model, calib_loader, backend):
+            log.info(f"  Backend='{backend}' succeeded ✓")
+            return backend
+        log.info(f"  Backend='{backend}' failed ✗")
+    log.warning(f"{QUANT_UNSUPPORTED}: all backends failed: {sorted(available)}")
+    return None
+
+
+# ─── MobileNetV2-specific fusion ──────────────────────────────────────────────
 
 def _fuse_mobilenetv2(model: nn.Module) -> nn.Module:
     """
@@ -154,21 +212,28 @@ def try_static_int8(
     model: nn.Module,
     calib_loader: DataLoader,
     calibration_samples: int = 128,
-    backend: str = "qnnpack",
+    backend: Optional[str] = None,
     inplace: bool = False,
 ) -> Tuple[nn.Module, str]:
     """
     Attempt static INT8 quantization with full fallback chain.
 
-    Steps:
-        1. Deep-copy model (always — original is never mutated)
-        2. fuse Conv-BN-ReLU6
-        3. set qconfig  (get_default_qconfig(backend))
-        4. prepare  (inserts MinMax/Histogram observers)
-        5. calibrate  (forward pass over n_samples images)
-        6. convert  (replaces float ops with quantized ops)
+    Backend selection (SPEC.md §4.2):
+        - backend=None (default): probe supported_engines in order
+          fbgemm → x86 → onednn → qnnpack and use the first that works.
+        - backend='fbgemm' (or any string): force that backend; skip probing.
 
-    On any failure in steps 2–6:
+    Steps:
+        1. Log supported_engines
+        2. Select backend (auto or explicit)
+        3. Deep-copy model
+        4. Fuse Conv-BN-ReLU6
+        5. Set qconfig → prepare (insert observers)
+        6. Calibrate (forward pass over n_samples images)
+        7. Convert (replaces float ops with quantized ops)
+        8. Verify inference (1 batch) — catches missing QuantizedCPU kernels
+
+    On any failure in steps 4–8:
         → logs QUANT_UNSUPPORTED with error detail
         → falls back to FP16, then FP32 if FP16 also fails
 
@@ -176,7 +241,7 @@ def try_static_int8(
         model: Source FP32 model (eval or train mode).
         calib_loader: DataLoader for calibration (128 images sufficient).
         calibration_samples: Number of images to run through observers.
-        backend: "qnnpack" (default, CPU) or "fbgemm" (x86 server).
+        backend: None = auto-select; string = force that backend.
         inplace: Ignored — we always deep-copy for safety.
 
     Returns:
@@ -185,14 +250,31 @@ def try_static_int8(
             "fp16_fallback"  — INT8 failed; returned FP16 model
             "fp32_fallback"  — INT8 + FP16 failed; returned FP32 model
     """
+    # Step 1: Log supported engines
+    _log_supported_engines()
+
+    # Step 2: Select backend
+    if backend is None:
+        selected = auto_select_backend(model, calib_loader)
+        if selected is None:
+            # All backends failed probe — skip the full pipeline, go to fallback
+            raise RuntimeError(
+                f"{QUANT_UNSUPPORTED}: no working INT8 backend found in "
+                f"{torch.backends.quantized.supported_engines}"
+            )
+        backend = selected
+        log.info(f"Auto-selected backend='{backend}'")
+    else:
+        log.info(f"Using forced backend='{backend}'")
+
     # Always work on a deep copy — never mutate the caller's model
     work_model = copy.deepcopy(model).float().eval()
 
     try:
-        # Step 1: Fuse
+        # Step 3: Fuse
         work_model = _fuse_mobilenetv2(work_model)
 
-        # Step 2: Set qconfig
+        # Step 4: Set qconfig
         torch.backends.quantized.engine = backend
         work_model.qconfig = torch.quantization.get_default_qconfig(backend)
 
