@@ -28,6 +28,7 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from src.compression import fp16 as _fp16_module  # used for fallback chain
 
 # Log key emitted on every fallback (SPEC.md §4.2)
 QUANT_UNSUPPORTED = "QUANT_UNSUPPORTED"
@@ -130,6 +131,25 @@ def _calibrate(
     return seen
 
 
+def _verify_inference(model: nn.Module, calib_loader: DataLoader) -> None:
+    """
+    Run one batch through the converted model to confirm the quantized
+    kernels are available at runtime.
+
+    This catches the case where torch.quantization.convert() succeeds but
+    the QuantizedCPU kernel is absent (e.g. torch+cpu PyPI wheel does not
+    ship the quantized::conv2d.new operator). Raises RuntimeError if inference
+    fails so the outer try/except triggers the QUANT_UNSUPPORTED fallback.
+    """
+    model.eval()
+    with torch.no_grad():
+        for images, _ in calib_loader:
+            if images.dtype != torch.float32:
+                images = images.float()
+            model(images)   # raises NotImplementedError / RuntimeError if kernel missing
+            break            # one batch is enough
+
+
 def try_static_int8(
     model: nn.Module,
     calib_loader: DataLoader,
@@ -186,6 +206,11 @@ def try_static_int8(
         # Step 5: Convert
         torch.quantization.convert(work_model, inplace=True)
 
+        # Step 6: Verify inference works — conversion may succeed but inference
+        # can fail if the QuantizedCPU kernel is missing (e.g. torch+cpu wheel).
+        # Better to detect this now than fail mid-FL-round at the client.
+        _verify_inference(work_model, calib_loader)
+
         log.info("Static INT8 conversion successful → quant_method=static_int8")
         return work_model, "static_int8"
 
@@ -194,9 +219,9 @@ def try_static_int8(
             f"{QUANT_UNSUPPORTED}: static INT8 failed ({type(int8_err).__name__}: {int8_err}). "
             f"Falling back to FP16. int8_disabled=true"
         )
-        # FP16 fallback
+        # FP16 fallback — using fp16.apply() so it can be intercepted in tests
         try:
-            fp16_model = copy.deepcopy(model).half().eval()
+            fp16_model = _fp16_module.apply(model, inplace=False)
             log.info("Fallback to FP16 successful → quant_method=fp16_fallback")
             return fp16_model, "fp16_fallback"
 

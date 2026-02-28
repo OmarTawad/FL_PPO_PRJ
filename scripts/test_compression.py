@@ -188,9 +188,13 @@ def test_int8_static():
     else:
         fail("Original mutated during INT8!")
 
-    # Forward pass with FP32 input (INT8 models always accept FP32 in eager mode)
+    # Forward pass — dtype depends on whether static_int8 or fp16_fallback returned
+    # static_int8 models accept FP32; fp16_fallback models require FP16 input
+    first_param = next(q_model.parameters())
+    input_dtype = torch.float32 if method == METHOD_STATIC_INT8 else first_param.dtype
+    x = torch.randn(1, 3, 32, 32, dtype=input_dtype)
     with torch.no_grad():
-        out = q_model(torch.randn(1, 3, 32, 32))
+        out = q_model(x)
     if out.shape == (1, 10):
         ok(f"INT8 (or fallback) forward pass: shape {tuple(out.shape)}")
     else:
@@ -355,8 +359,9 @@ def test_int8_output_shape():
     calib = make_calib_loader(n=16, h=32, w=32)
     q_model, method = quantize(model, bits=8, calib_loader=calib, calibration_samples=16)
 
-    # Batch inference
-    x = torch.randn(4, 3, 32, 32)
+    # Input dtype must match fallback model dtype (fp16_fallback → float16 params)
+    first_param = next(q_model.parameters())
+    x = torch.randn(4, 3, 32, 32, dtype=first_param.dtype)
     with torch.no_grad():
         out = q_model(x)
 
@@ -382,22 +387,23 @@ def test_fp32_fallback():
     model = make_model()
     calib = make_calib_loader(n=4)
 
-    # Patch both INT8 and FP16 to fail
+    # Patch _fuse_mobilenetv2 and the _fp16_module reference INSIDE int8_mod
+    # (int8.py uses int8_mod._fp16_module.apply, not fp16_mod.apply directly)
     orig_fuse = int8_mod._fuse_mobilenetv2
-    orig_fp16_apply = fp16_mod.apply
+    orig_fp16_apply = int8_mod._fp16_module.apply
 
     def _bad_fuse(m): raise RuntimeError("Injected INT8 failure")
     def _bad_fp16(m, inplace=False): raise RuntimeError("Injected FP16 failure")
 
     int8_mod._fuse_mobilenetv2 = _bad_fuse
-    fp16_mod.apply = _bad_fp16
+    int8_mod._fp16_module.apply = _bad_fp16
 
     try:
         from src.compression.int8 import try_static_int8
         q_model, method = try_static_int8(model, calib, calibration_samples=4)
     finally:
         int8_mod._fuse_mobilenetv2 = orig_fuse
-        fp16_mod.apply = orig_fp16_apply
+        int8_mod._fp16_module.apply = orig_fp16_apply
 
     if method == METHOD_FP32_FALLBACK:
         ok(f"Double-fallback: method='{method}' (INT8+FP16 failed → FP32)")
