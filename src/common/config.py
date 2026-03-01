@@ -75,12 +75,16 @@ class DataConfig:
     partition: str = "iid"             # iid | dirichlet
     dirichlet_alpha: float = 0.1
     reduced_fraction: float = 1.0
+    eval_fraction: float = 0.10        # fraction of test set per client (for evaluate phase)
+    max_eval_samples_per_client: int = 0  # 0 = use eval_fraction; >0 caps samples
 
     def __post_init__(self):
         if self.partition not in ("iid", "dirichlet"):
             raise ValueError(f"partition must be 'iid' or 'dirichlet', got: {self.partition}")
         if not (0.0 < self.reduced_fraction <= 1.0):
             raise ValueError(f"reduced_fraction must be in (0,1], got: {self.reduced_fraction}")
+        if not (0.0 < self.eval_fraction <= 1.0):
+            raise ValueError(f"eval_fraction must be in (0,1], got: {self.eval_fraction}")
 
 
 @dataclass
@@ -150,6 +154,7 @@ class RLConfig:
     policy: str = "MlpPolicy"
     checkpoint_dir: str = "outputs/checkpoints"
     n_steps: int = 1                   # PPO n_steps per update (1 = every FL round)
+    batch_size: int = 64               # PPO minibatch size
     learning_rate: float = 3e-4
 
 
@@ -298,6 +303,8 @@ def load_config(path: str) -> Config:
         partition=str(d.get("partition", "iid")),
         dirichlet_alpha=float(d.get("dirichlet_alpha", 0.1)),
         reduced_fraction=float(d.get("reduced_fraction", 1.0)),
+        eval_fraction=float(d.get("eval_fraction", 0.10)),
+        max_eval_samples_per_client=int(d.get("max_eval_samples_per_client", 0)),
     )
 
     quantization = _parse_quant(raw["quantization"])
@@ -314,6 +321,7 @@ def load_config(path: str) -> Config:
         policy=str(rl_raw.get("policy", "MlpPolicy")),
         checkpoint_dir=str(rl_raw.get("checkpoint_dir", "outputs/checkpoints")),
         n_steps=int(rl_raw.get("n_steps", 1)),
+        batch_size=int(rl_raw.get("batch_size", 64)),
         learning_rate=float(rl_raw.get("learning_rate", 3e-4)),
     )
 

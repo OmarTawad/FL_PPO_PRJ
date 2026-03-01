@@ -1,0 +1,75 @@
+# configs/exp1_ppo_smoke.yaml
+# Phase 7 PPO smoke test: 2 rounds/episode, adaptive quant, 3 strong clients.
+# PPO total_timesteps=2 → runs exactly 1 episode × 2 rounds.
+
+experiment:
+  name: "exp1_ppo_smoke"
+  rounds: 2
+  seed: 42
+  dropout_mode: "stochastic"
+
+clients:
+  count: 3
+  profiles:
+    - id: 0
+      profile: "strong"
+      mem_limit_mb: 2048
+      cpu_cores: 2.0
+      data_fraction: 0.0
+    - id: 1
+      profile: "strong"
+      mem_limit_mb: 2048
+      cpu_cores: 2.0
+      data_fraction: 0.0
+    - id: 2
+      profile: "strong"
+      mem_limit_mb: 2048
+      cpu_cores: 2.0
+      data_fraction: 0.0
+
+data:
+  dataset: "cifar10"
+  partition: "iid"
+  dirichlet_alpha: 0.1
+  reduced_fraction: 0.005   # ~83 train samples/client
+  eval_fraction: 0.01       # 1% of test set = 100 samples
+  max_eval_samples_per_client: 20  # cap at 20 per client for speed
+
+quantization:
+  mode: "adaptive"          # PPO assigns per-client bits
+  fixed_bits: 32            # fallback if mode is ever switched to fixed
+  calibration_samples: 8    # small for smoke
+
+fl:
+  local_epochs: 1
+  batch_size: 2
+  per_profile_batch:
+    strong: 2
+    medium: 2
+    weak: 1
+    extreme_weak: 1
+  num_workers: 0
+  pin_memory: false
+  optimizer: "sgd"
+  lr: 0.01
+  momentum: 0.9
+  weight_decay: 0.0001
+  min_clients_per_round: 1  # adaptive mode may select fewer
+
+rl:
+  algorithm: "ppo"
+  total_timesteps: 2        # 2 steps = 1 episode × 2 rounds
+  n_steps: 2                # PPO collects 2 steps before update
+  batch_size: 2             # minibatch = n_steps
+  gamma_discount: 0.99
+  reward_alpha: 1.0
+  reward_beta: 0.5
+  reward_gamma_var: 0.1
+  policy: "MlpPolicy"
+  checkpoint_dir: "outputs/checkpoints"
+  learning_rate: 0.0003
+
+logging:
+  level: "info"
+  metrics_dir: "outputs/metrics"
+  plots_dir: "outputs/plots"

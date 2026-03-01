@@ -85,18 +85,24 @@ def train_one_epoch(
     model.train()
     criterion = nn.CrossEntropyLoss()
 
+    # Detect model dtype: cast inputs to match (needed for FP16 models)
+    try:
+        model_dtype = next(model.parameters()).dtype
+    except StopIteration:
+        model_dtype = torch.float32
+
     total_loss = 0.0
     n_samples = 0
     t0 = time.perf_counter()
 
     try:
         for batch_idx, (images, labels) in enumerate(loader):
-            images = images.to(device)
+            images = images.to(device=device, dtype=model_dtype)
             labels = labels.to(device)
 
             optimizer.zero_grad(set_to_none=True)
 
-            # Forward pass — model may be FP16
+            # Forward pass
             outputs = model(images)
 
             # CE loss requires float32; upcast logits if model is FP16
@@ -116,7 +122,6 @@ def train_one_epoch(
 
     except RuntimeError as e:
         if "out of memory" in str(e).lower():
-            # OOM: free memory and signal dropout
             _try_free_memory()
             return TrainResult(
                 epoch=epoch,
@@ -125,7 +130,7 @@ def train_one_epoch(
                 train_time_s=time.perf_counter() - t0,
                 oom=True,
             )
-        raise  # Non-OOM RuntimeError: re-raise
+        raise
 
     avg_loss = total_loss / max(n_samples, 1)
     return TrainResult(
@@ -159,13 +164,19 @@ def evaluate(
     model.eval()
     criterion = nn.CrossEntropyLoss()
 
+    # Detect model dtype so inputs can be cast to match
+    try:
+        model_dtype = next(model.parameters()).dtype
+    except StopIteration:
+        model_dtype = torch.float32
+
     total_loss = 0.0
     correct = 0
     n_samples = 0
     t0 = time.perf_counter()
 
     for images, labels in loader:
-        images = images.to(device)
+        images = images.to(device=device, dtype=model_dtype)
         labels = labels.to(device)
 
         outputs = model(images)

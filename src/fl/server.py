@@ -6,22 +6,12 @@ Paper: Adaptive FL with PPO-based Client and Quantization Selection
 Usage:
     python src/fl/server.py --config configs/exp1_smoke.yaml
 
-Runs a lightweight in-process FL simulation (no Ray, no sockets).
-The simulation loop follows the standard Flower protocol:
-  For each round t:
-    1. strategy.configure_fit() → per-client FitIns
-    2. All clients run fit() locally (sequential, CPU-only VM)
-    3. strategy.aggregate_fit() → aggregated parameters + per-round JSON log
-    4. strategy.configure_evaluate() → per-client EvaluateIns
-    5. All clients run evaluate() locally
-    6. strategy.aggregate_evaluate() → aggregated metrics
+Public interface for Phase 7 env:
+    run_one_round(strategy, client_manager, parameters, server_round)
+        → (new_parameters, round_log_dict)
 
-This avoids the Ray dependency required by fl.simulation.start_simulation().
-Compatible with flwr 1.7.0 on CPU-only VM.
-
-Outputs:
-    outputs/metrics/run_<YYYYMMDD_HHMMSS>/round_<t>.json
-    outputs/metrics/run_<YYYYMMDD_HHMMSS>/run_summary.json
+Internal:
+    _run_simulation(client_fn, n_clients, n_rounds, strategy) — full loop
 """
 
 from __future__ import annotations
@@ -32,7 +22,7 @@ import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, List
+from typing import Callable, Dict, List, Tuple, Optional
 
 PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
 if PROJECT_ROOT not in sys.path:
@@ -40,10 +30,11 @@ if PROJECT_ROOT not in sys.path:
 
 import flwr as fl
 from flwr.common import (
-    FitIns, EvaluateIns, FitRes, EvaluateRes,
-    ndarrays_to_parameters, parameters_to_ndarrays,
-    GetParametersIns,
+    FitIns, FitRes, EvaluateIns, EvaluateRes, Parameters,
+    ndarrays_to_parameters,
 )
+from flwr.server.client_manager import SimpleClientManager
+from torch.utils.data import DataLoader
 
 from src.common.config import load_config, Config
 from src.models.mobilenetv2 import get_model, get_parameters
@@ -64,7 +55,7 @@ log = logging.getLogger(__name__)
 logging.getLogger("flwr").setLevel(logging.WARNING)
 
 
-# ─── Lightweight simulation loop ──────────────────────────────────────────────
+# ─── _MockClientProxy ─────────────────────────────────────────────────────────
 
 class _MockClientProxy(fl.server.client_proxy.ClientProxy):
     """Minimal proxy that calls a FlowerClient directly (no network)."""
@@ -77,8 +68,7 @@ class _MockClientProxy(fl.server.client_proxy.ClientProxy):
         raise NotImplementedError
 
     def get_parameters(self, ins, timeout, group_id):
-        res = self._client.get_parameters(ins)
-        return res
+        return self._client.get_parameters(ins)
 
     def fit(self, ins, timeout, group_id):
         return self._client.fit(ins)
@@ -90,84 +80,66 @@ class _MockClientProxy(fl.server.client_proxy.ClientProxy):
         raise NotImplementedError
 
 
-def _run_simulation(
-    client_fn: Callable[[str], fl.client.Client],
-    n_clients: int,
-    n_rounds: int,
+# ─── Public: run_one_round ────────────────────────────────────────────────────
+
+def run_one_round(
     strategy: FedAvgQuant,
-) -> None:
+    client_manager: SimpleClientManager,
+    parameters: Parameters,
+    server_round: int,
+) -> Tuple[Parameters, dict]:
     """
-    In-process FL simulation loop. No Ray, no sockets.
+    Execute one FL round (fit + evaluate) in-process.
 
-    For each round:
-      configure_fit → client.fit → aggregate_fit
-      configure_evaluate → client.evaluate → aggregate_evaluate
+    Called by FLEnv.step() once per env step.
+
+    Protocol:
+        configure_fit → client.fit (all selected) → aggregate_fit
+        configure_evaluate → client.evaluate (all) → aggregate_evaluate
+
+    Returns:
+        new_parameters:  Aggregated global parameters after this round.
+        round_log_dict:  The per-round JSON log dict (from strategy.last_round_log)
+                         with all SPEC.md §8 required keys.
     """
-    # Build client instances (one per client, reused across rounds)
-    clients = {str(i): client_fn(str(i)) for i in range(n_clients)}
-    proxies = {cid: _MockClientProxy(cid, c) for cid, c in clients.items()}
+    # ── Fit phase ──────────────────────────────────────────────────────────────
+    fit_instructions = strategy.configure_fit(server_round, parameters, client_manager)
 
-    from flwr.server.client_manager import SimpleClientManager
-    client_manager = SimpleClientManager()
-    for proxy in proxies.values():
-        client_manager.register(proxy)
+    fit_results: List[Tuple] = []
+    fit_failures: List = []
+    for proxy, fit_ins in fit_instructions:
+        try:
+            fit_res = proxy.fit(fit_ins, timeout=None, group_id=None)
+            fit_results.append((proxy, fit_res))
+        except Exception as e:
+            log.warning(f"Client {proxy.cid} fit failed: {type(e).__name__}: {e}")
+            fit_failures.append((proxy, e))
 
-    # Initial parameters from strategy
-    parameters = strategy.initial_parameters  # already set as FedAvg attribute
+    agg_params, _ = strategy.aggregate_fit(server_round, fit_results, fit_failures)
+    new_params = agg_params if agg_params is not None else parameters
 
-    for server_round in range(1, n_rounds + 1):
-        log.info(f"\n{'─'*50}\n  ROUND {server_round}/{n_rounds}\n{'─'*50}")
+    # ── Evaluate phase ─────────────────────────────────────────────────────────
+    eval_instructions = strategy.configure_evaluate(server_round, new_params, client_manager)
 
-        # ── Fit phase ─────────────────────────────────────────────────────────
-        fit_instructions = strategy.configure_fit(
-            server_round, parameters, client_manager
-        )
+    eval_results: List[Tuple] = []
+    eval_failures: List = []
+    for proxy, eval_ins in eval_instructions:
+        try:
+            eval_res = proxy.evaluate(eval_ins, timeout=None, group_id=None)
+            eval_results.append((proxy, eval_res))
+        except Exception as e:
+            log.warning(f"Client {proxy.cid} evaluate failed: {type(e).__name__}: {e}")
+            eval_failures.append((proxy, e))
 
-        fit_results = []
-        fit_failures = []
-        for proxy, fit_ins in fit_instructions:
-            try:
-                fit_res = proxy.fit(fit_ins, timeout=None, group_id=None)
-                fit_results.append((proxy, fit_res))
-            except Exception as e:
-                log.warning(f"Client {proxy.cid} fit failed: {e}")
-                fit_failures.append((proxy, e))
+    strategy.aggregate_evaluate(server_round, eval_results, eval_failures)
 
-        # ── Aggregate fit ─────────────────────────────────────────────────────
-        agg_params, agg_metrics = strategy.aggregate_fit(
-            server_round, fit_results, fit_failures
-        )
-        if agg_params is not None:
-            parameters = agg_params
-            log.info(f"  aggregate_fit metrics: {agg_metrics}")
-
-        # ── Evaluate phase ─────────────────────────────────────────────────────
-        eval_instructions = strategy.configure_evaluate(
-            server_round, parameters, client_manager
-        )
-
-        eval_results = []
-        eval_failures = []
-        for proxy, eval_ins in eval_instructions:
-            try:
-                eval_res = proxy.evaluate(eval_ins, timeout=None, group_id=None)
-                eval_results.append((proxy, eval_res))
-            except Exception as e:
-                log.warning(f"Client {proxy.cid} evaluate failed: {e}")
-                eval_failures.append((proxy, e))
-
-        # ── Aggregate evaluate ─────────────────────────────────────────────────
-        agg_loss, eval_agg_metrics = strategy.aggregate_evaluate(
-            server_round, eval_results, eval_failures
-        )
-        log.info(f"  aggregate_evaluate loss={agg_loss} metrics={eval_agg_metrics}")
-
-    log.info("\nSimulation complete.")
+    return new_params, strategy.last_round_log
 
 
 # ─── Setup helpers ────────────────────────────────────────────────────────────
 
-def _make_server_test_loader(cfg: Config):
+def make_server_test_loader(cfg: Config) -> DataLoader:
+    """Build the server-side held-out evaluation DataLoader (10%, seed, 224×224)."""
     return get_server_test_loader(
         root="data/",
         batch_size=2,
@@ -180,9 +152,17 @@ def _make_server_test_loader(cfg: Config):
     )
 
 
-def _make_partitions(cfg: Config):
+def make_partitions(cfg: Config):
+    """
+    Build per-client train + eval index lists.
+
+    Returns:
+        train_partitions: List[List[int]] — one per client
+        eval_partitions:  List[List[int]] — one per client (capped by config)
+    """
     train_ds = get_cifar10_train(root="data/", download=True, use_32=False)
     data_fractions = [p.data_fraction for p in cfg.clients.profiles]
+
     train_partitions = build_partitions(
         dataset=train_ds,
         n_clients=cfg.clients.count,
@@ -192,14 +172,81 @@ def _make_partitions(cfg: Config):
         reduced_fraction=cfg.data.reduced_fraction,
         seed=cfg.experiment.seed,
     )
+
     test_ds = get_cifar10_test(root="data/", download=False, use_32=False)
     n_test = len(test_ds)
-    n_per = max(1, n_test // cfg.clients.count)
-    eval_partitions = [
-        list(range(i * n_per, min((i + 1) * n_per, n_test)))
-        for i in range(cfg.clients.count)
-    ]
+    n_per_base = max(1, int(n_test * cfg.data.eval_fraction))
+    cap = cfg.data.max_eval_samples_per_client
+    if cap > 0:
+        n_per = min(n_per_base, cap)
+    else:
+        n_per = n_per_base
+
+    eval_partitions = []
+    for i in range(cfg.clients.count):
+        start = i * (n_test // cfg.clients.count)
+        eval_partitions.append(list(range(start, min(start + n_per, n_test))))
+
     return train_partitions, eval_partitions
+
+
+def make_client_manager(
+    cfg: Config,
+    train_partitions: List[List[int]],
+    eval_partitions: List[List[int]],
+    data_root: str = "data/",
+) -> Tuple[SimpleClientManager, List[FlowerClient]]:
+    """
+    Create FlowerClient instances and register _MockClientProxy in a SimpleClientManager.
+
+    Returns:
+        (client_manager, client_list)
+    """
+    client_manager = SimpleClientManager()
+    raw_clients = []
+    for i in range(cfg.clients.count):
+        profile = cfg.clients.profile_for(i)
+        fc = FlowerClient(
+            client_id=i,
+            train_indices=train_partitions[i],
+            eval_indices=eval_partitions[i],
+            cfg=cfg,
+            profile=profile,
+            data_root=data_root,
+        )
+        raw_clients.append(fc)
+        proxy = _MockClientProxy(str(i), fc.to_client())
+        client_manager.register(proxy)
+    return client_manager, raw_clients
+
+
+# ─── In-process simulation loop ───────────────────────────────────────────────
+
+def _run_simulation(
+    client_fn: Callable[[str], fl.client.Client],
+    n_clients: int,
+    n_rounds: int,
+    strategy: FedAvgQuant,
+) -> None:
+    """Full multi-round simulation loop (used by server.py CLI)."""
+    clients = {str(i): client_fn(str(i)) for i in range(n_clients)}
+    client_manager = SimpleClientManager()
+    for cid, c in clients.items():
+        client_manager.register(_MockClientProxy(cid, c))
+
+    parameters = strategy.initial_parameters
+
+    for server_round in range(1, n_rounds + 1):
+        log.info(f"\n{'─'*50}\n  ROUND {server_round}/{n_rounds}\n{'─'*50}")
+        parameters, round_log = run_one_round(
+            strategy, client_manager, parameters, server_round
+        )
+        log.info(
+            f"  global_acc={round_log.get('global_accuracy', '?'):.4f} "
+            f"delta={round_log.get('accuracy_delta', 0.0):+.4f}"
+        )
+
+    log.info("\nSimulation complete.")
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -208,7 +255,6 @@ def main(config_path: str) -> None:
     cfg = load_config(config_path)
     log.info(f"Config: {cfg.experiment.name}  rounds={cfg.experiment.rounds}  clients={cfg.n_clients}")
 
-    # 1. Output directory
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     output_dir = Path(cfg.logging.metrics_dir) / f"run_{run_id}"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -216,26 +262,21 @@ def main(config_path: str) -> None:
     Path("outputs/checkpoints").mkdir(parents=True, exist_ok=True)
     log.info(f"Output dir: {output_dir}")
 
-    # 2. Server test loader
     log.info("Building server test loader...")
-    server_test_loader = _make_server_test_loader(cfg)
+    server_test_loader = make_server_test_loader(cfg)
     log.info(f"Server test set: {len(server_test_loader.dataset)} samples")
 
-    # 3. Partitions
     log.info("Building data partitions...")
-    train_partitions, eval_partitions = _make_partitions(cfg)
+    train_partitions, eval_partitions = make_partitions(cfg)
     for i, p in enumerate(train_partitions):
-        log.info(f"  Client {i}: {len(p)} train samples")
+        log.info(f"  Client {i}: {len(p)} train / {len(eval_partitions[i])} eval samples")
 
-    # 4. Initial model parameters
     log.info("Initialising global model...")
     init_model = get_model()
     initial_parameters = ndarrays_to_parameters(get_parameters(init_model))
 
-    # 5. Dropout tracker
     dropout_tracker = DropoutTracker(n_clients=cfg.clients.count)
 
-    # 6. Strategy
     strategy = FedAvgQuant(
         server_test_loader=server_test_loader,
         dropout_tracker=dropout_tracker,
@@ -244,7 +285,6 @@ def main(config_path: str) -> None:
         initial_parameters=initial_parameters,
     )
 
-    # 7. Client factory
     def client_fn(cid: str) -> fl.client.Client:
         cid_int = int(cid)
         profile = cfg.clients.profile_for(cid_int)
@@ -257,8 +297,7 @@ def main(config_path: str) -> None:
             data_root="data/",
         ).to_client()
 
-    # 8. Run in-process simulation
-    log.info(f"Starting in-process simulation ({cfg.clients.count} clients, {cfg.experiment.rounds} rounds)")
+    log.info(f"Starting simulation ({cfg.clients.count} clients, {cfg.experiment.rounds} rounds)")
     _run_simulation(
         client_fn=client_fn,
         n_clients=cfg.clients.count,
@@ -266,7 +305,6 @@ def main(config_path: str) -> None:
         strategy=strategy,
     )
 
-    # 9. Summary + verification
     json_logs = sorted(output_dir.glob("round_*.json"))
     required_keys = {
         "round", "selected_clients", "quant_assignments",
@@ -274,7 +312,7 @@ def main(config_path: str) -> None:
         "global_accuracy", "accuracy_delta",
     }
     log.info(f"\n{'='*60}")
-    log.info(f"Simulation complete. {len(json_logs)} round log(s) written:")
+    log.info(f"Complete. {len(json_logs)} log(s) at {output_dir}:")
     for p in json_logs:
         with open(p) as f:
             d = json.load(f)
@@ -297,7 +335,6 @@ def main(config_path: str) -> None:
     }
     with open(output_dir / "run_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
-    log.info(f"Summary: {output_dir / 'run_summary.json'}")
     log.info(f"{'='*60}")
 
 
