@@ -1,0 +1,56 @@
+# docker/Dockerfile.base
+# Base image shared by both server and client containers.
+# Stage 14: FL PPO Paper — Adaptive FL with PPO-based Client and Quantization Selection
+#
+# Provides:
+#   - Python 3.11 (slim, minimal OS footprint)
+#   - PyTorch 2.2.2 CPU-only (no CUDA — paper uses CPU-bound experiments)
+#   - All project Python dependencies from requirements.txt
+#   - Project source code at /app
+#
+# Build:
+#   docker build -f docker/Dockerfile.base -t fl_ppo_base:latest .
+
+FROM python:3.11-slim
+
+# ── System dependencies ───────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Python environment ────────────────────────────────────────────────────────
+WORKDIR /app
+
+# Upgrade pip first
+RUN pip install --no-cache-dir --upgrade pip
+
+# Install PyTorch CPU-only FIRST (large download; cached as separate layer)
+# Pinned to exact version from SPEC.md §11
+RUN pip install --no-cache-dir \
+    torch==2.2.2+cpu \
+    torchvision==0.17.2+cpu \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+
+# Install all other requirements (after torch layer is cached)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+
+# ── Project source ────────────────────────────────────────────────────────────
+COPY src/ /app/src/
+COPY configs/ /app/configs/
+COPY scripts/ /app/scripts/
+COPY server_main.py /app/server_main.py
+COPY client_main.py /app/client_main.py
+
+# ── Environment defaults ──────────────────────────────────────────────────────
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+# Data is expected at /data (mounted from host or named volume)
+ENV DATA_ROOT=/data/cifar10
+ENV PARTITION_FILE=/data/partitions_50_iid.json
+ENV OUTPUTS_DIR=/outputs
+
+# Default ports
+EXPOSE 8080

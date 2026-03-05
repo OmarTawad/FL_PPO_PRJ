@@ -1,0 +1,31 @@
+# docker/Dockerfile.client
+# FL PPO Paper — Flower Client Container
+# Stage 14: Inherits from fl_ppo_base, runs client_main.py
+#
+# Build:
+#   docker build -f docker/Dockerfile.client -t fl_ppo_client:latest .
+#
+# Run (example for client 0):
+#   docker run --rm \
+#     -e CLIENT_ID=0 \
+#     -e SERVER_ADDR=server:8080 \
+#     -e CONFIG_PATH=configs/exp_docker_smoke.yaml \
+#     -e PARTITION_FILE=/data/partitions_50_iid.json \
+#     -v $(pwd)/data:/data:ro \
+#     fl_ppo_client:latest
+#
+# Resource limits (set in docker-compose.yml, NOT hardcoded here):
+#   Strong:       --cpus 2.0 --memory 2048m
+#   Medium:       --cpus 1.0 --memory 1024m
+#   Weak:         --cpus 0.5 --memory 512m
+#   Extreme-weak: --cpus 0.25 --memory 256m
+
+FROM fl_ppo_base:latest
+
+# Client entrypoint
+ENTRYPOINT ["python3", "/app/client_main.py"]
+
+# Default environment (overridden per container by docker-compose.yml)
+ENV CLIENT_ID=0
+ENV SERVER_ADDR=server:8080
+ENV CONFIG_PATH=configs/exp_docker_smoke.yaml

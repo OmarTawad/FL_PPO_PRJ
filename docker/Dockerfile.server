@@ -1,0 +1,28 @@
+# docker/Dockerfile.server
+# FL PPO Paper — Flower Server Container
+# Stage 14: Inherits from fl_ppo_base, runs server_main.py
+#
+# Build:
+#   docker build -f docker/Dockerfile.server -t fl_ppo_server:latest .
+#
+# Run (fixed mode, 3 clients):
+#   docker run --rm \
+#     -e CONFIG_PATH=configs/exp_docker_smoke.yaml \
+#     -e PARTITION_FILE=/data/partitions_50_iid.json \
+#     -e NUM_ROUNDS=50 \
+#     -v $(pwd)/data:/data:ro \
+#     -v $(pwd)/outputs:/outputs \
+#     -p 8080:8080 \
+#     fl_ppo_server:latest
+
+FROM fl_ppo_base:latest
+
+# Server-specific: stable-baselines3 + gymnasium (PPO controller)
+# Already installed via requirements.txt in base image
+
+# Server entrypoint
+ENTRYPOINT ["python3", "/app/server_main.py"]
+
+# Default environment for server container
+ENV SERVER_PORT=8080
+ENV CONFIG_PATH=configs/exp_docker_smoke.yaml

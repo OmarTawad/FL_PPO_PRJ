@@ -1,0 +1,75 @@
+# configs/exp_docker_smoke.yaml
+# Stage 16 Docker smoke test: 3 clients, 2 rounds, IID, FP32.
+# Purpose: validate gRPC transport + shared data volume + per-round JSON logs.
+#
+# Run with:
+#   docker compose -f docker-compose.smoke.yml up --build
+#
+# Paper alignment notes:
+#   - 224x224 enforced (use_32=False in client.py hardcoded)
+#   - reduced_fraction=0.01 → ~100 train samples/client (fast but paper-correct inputs)
+#   - All paper SPEC fields will be logged in round JSON files
+
+experiment:
+  name: "exp_docker_smoke"
+  rounds: 2
+  seed: 42
+  dropout_mode: "stochastic"
+
+clients:
+  count: 3
+  profiles:
+    - id: 0
+      profile: "strong"
+      mem_limit_mb: 2048
+      cpu_cores: 2.0
+      data_fraction: 0.0   # auto-split equally
+    - id: 1
+      profile: "medium"
+      mem_limit_mb: 1024
+      cpu_cores: 1.0
+      data_fraction: 0.0
+    - id: 2
+      profile: "weak"
+      mem_limit_mb: 512
+      cpu_cores: 0.5
+      data_fraction: 0.0
+
+data:
+  dataset: "cifar10"
+  partition: "iid"
+  dirichlet_alpha: 0.1
+  reduced_fraction: 0.01   # ~100 train images/client → fast smoke test
+  eval_fraction: 0.02      # 200 test samples server-side
+  max_eval_samples_per_client: 20
+
+quantization:
+  mode: "fixed_fp32"       # Simplest mode for smoke test
+  fixed_bits: 32
+  calibration_samples: 8
+
+fl:
+  local_epochs: 1
+  batch_size: 2
+  per_profile_batch:
+    strong: 2
+    medium: 2
+    weak: 1
+    extreme_weak: 1
+  num_workers: 0
+  pin_memory: false
+  optimizer: "sgd"
+  lr: 0.01
+  momentum: 0.9
+  weight_decay: 0.0001
+  min_clients_per_round: 1
+
+rl:
+  algorithm: "ppo"
+  total_timesteps: 2
+  n_steps: 1
+
+logging:
+  level: "info"
+  metrics_dir: "outputs/metrics"
+  plots_dir: "outputs/plots"

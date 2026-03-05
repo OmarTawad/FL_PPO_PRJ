@@ -1,0 +1,1145 @@
+name: fl_ppo_prj
+services:
+  server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    image: fl_ppo_server:latest
+    container_name: fl_server
+    hostname: server
+    environment:
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+      SERVER_PORT: '8080'
+      OUTPUTS_DIR: /outputs
+      NUM_ROUNDS: '50'
+    ports:
+    - 8080:8080
+    volumes: &id001
+    - ./data:/data:ro
+    - ./outputs:/outputs
+    - ./configs:/app/configs:ro
+    networks: &id002
+    - fl_network
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 12288m
+        reservations:
+          cpus: '4'
+          memory: 4096m
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - echo healthy
+      interval: 10s
+      timeout: 5s
+      retries: 3
+  client_00:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_00
+    environment:
+      CLIENT_ID: '0'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+    restart: 'no'
+  client_01:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_01
+    environment:
+      CLIENT_ID: '1'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+    restart: 'no'
+  client_02:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_02
+    environment:
+      CLIENT_ID: '2'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+    restart: 'no'
+  client_03:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_03
+    environment:
+      CLIENT_ID: '3'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+    restart: 'no'
+  client_04:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_04
+    environment:
+      CLIENT_ID: '4'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+    restart: 'no'
+  client_05:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_05
+    environment:
+      CLIENT_ID: '5'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+    restart: 'no'
+  client_06:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_06
+    environment:
+      CLIENT_ID: '6'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+    restart: 'no'
+  client_07:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_07
+    environment:
+      CLIENT_ID: '7'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+    restart: 'no'
+  client_08:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_08
+    environment:
+      CLIENT_ID: '8'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+    restart: 'no'
+  client_09:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_09
+    environment:
+      CLIENT_ID: '9'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+    restart: 'no'
+  client_10:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_10
+    environment:
+      CLIENT_ID: '10'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_11:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_11
+    environment:
+      CLIENT_ID: '11'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_12:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_12
+    environment:
+      CLIENT_ID: '12'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_13:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_13
+    environment:
+      CLIENT_ID: '13'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_14:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_14
+    environment:
+      CLIENT_ID: '14'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_15:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_15
+    environment:
+      CLIENT_ID: '15'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_16:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_16
+    environment:
+      CLIENT_ID: '16'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_17:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_17
+    environment:
+      CLIENT_ID: '17'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_18:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_18
+    environment:
+      CLIENT_ID: '18'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_19:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_19
+    environment:
+      CLIENT_ID: '19'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_20:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_20
+    environment:
+      CLIENT_ID: '20'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_21:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_21
+    environment:
+      CLIENT_ID: '21'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_22:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_22
+    environment:
+      CLIENT_ID: '22'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_23:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_23
+    environment:
+      CLIENT_ID: '23'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_24:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_24
+    environment:
+      CLIENT_ID: '24'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_25:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_25
+    environment:
+      CLIENT_ID: '25'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_26:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_26
+    environment:
+      CLIENT_ID: '26'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_27:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_27
+    environment:
+      CLIENT_ID: '27'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_28:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_28
+    environment:
+      CLIENT_ID: '28'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_29:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_29
+    environment:
+      CLIENT_ID: '29'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1024m
+    restart: 'no'
+  client_30:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_30
+    environment:
+      CLIENT_ID: '30'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_31:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_31
+    environment:
+      CLIENT_ID: '31'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_32:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_32
+    environment:
+      CLIENT_ID: '32'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_33:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_33
+    environment:
+      CLIENT_ID: '33'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_34:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_34
+    environment:
+      CLIENT_ID: '34'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_35:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_35
+    environment:
+      CLIENT_ID: '35'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_36:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_36
+    environment:
+      CLIENT_ID: '36'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_37:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_37
+    environment:
+      CLIENT_ID: '37'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_38:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_38
+    environment:
+      CLIENT_ID: '38'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_39:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_39
+    environment:
+      CLIENT_ID: '39'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_40:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_40
+    environment:
+      CLIENT_ID: '40'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_41:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_41
+    environment:
+      CLIENT_ID: '41'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_42:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_42
+    environment:
+      CLIENT_ID: '42'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_43:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_43
+    environment:
+      CLIENT_ID: '43'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_44:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_44
+    environment:
+      CLIENT_ID: '44'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512m
+    restart: 'no'
+  client_45:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_45
+    environment:
+      CLIENT_ID: '45'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256m
+    restart: 'no'
+  client_46:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_46
+    environment:
+      CLIENT_ID: '46'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256m
+    restart: 'no'
+  client_47:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_47
+    environment:
+      CLIENT_ID: '47'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256m
+    restart: 'no'
+  client_48:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_48
+    environment:
+      CLIENT_ID: '48'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256m
+    restart: 'no'
+  client_49:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_49
+    environment:
+      CLIENT_ID: '49'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp_docker_50clients.yaml
+      PARTITION_FILE: /data/partitions_50_iid.json
+      DATA_ROOT: /data/cifar10
+    volumes: *id001
+    networks: *id002
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256m
+    restart: 'no'
+networks:
+  fl_network:
+    driver: bridge
+volumes:
+  fl_outputs:
+    driver: local

@@ -1,0 +1,131 @@
+# configs/exp_docker_50clients.yaml
+# Full 50-client Docker experiment: 50 rounds, heterogeneous clients, IID, adaptive PPO.
+# Paper-aligned: matches Table 2 (Exp10 / PPO adaptive) in the paper.
+#
+# WARNING: This config declares 50 clients.
+# DO NOT use this directly with docker-compose.yml on a 22 GB host
+# without first running the smoke test successfully.
+#
+# Resource distribution matches docker-compose.yml:
+#   IDs 0-9   = strong    (2.0 CPU, 2048 MB)
+#   IDs 10-29 = medium    (1.0 CPU, 1024 MB)
+#   IDs 30-44 = weak      (0.5 CPU,  512 MB)
+#   IDs 45-49 = extreme_weak (0.25 CPU, 256 MB)
+#
+# Paper alignment:
+#   - state_dim = 50*7+3 = 353
+#   - action_space = MultiDiscrete([4]*50)  (4^50 joint actions, ~2^100)
+#   - reward = alpha*dAcc - beta*dropout - gamma*Var(Q) [selected clients only]
+#   - quantization fallback: static_int8 -> fp16 -> fp32
+#   - CIFAR-10, MobileNetV2, 224x224
+
+experiment:
+  name: "exp_docker_50clients"
+  rounds: 50
+  seed: 42
+  dropout_mode: "stochastic"
+
+clients:
+  count: 50
+  profiles:
+    # Strong clients (IDs 0-9): 2.0 CPUs, 2048 MB
+    - {id:  0, profile: "strong",       mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id:  1, profile: "strong",       mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id:  2, profile: "strong",       mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id:  3, profile: "strong",       mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id:  4, profile: "strong",       mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id:  5, profile: "strong",       mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id:  6, profile: "strong",       mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id:  7, profile: "strong",       mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id:  8, profile: "strong",       mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id:  9, profile: "strong",       mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    # Medium clients (IDs 10-29): 1.0 CPU, 1024 MB
+    - {id: 10, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 11, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 12, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 13, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 14, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 15, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 16, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 17, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 18, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 19, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 20, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 21, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 22, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 23, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 24, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 25, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 26, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 27, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 28, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 29, profile: "medium",       mem_limit_mb: 1024, cpu_cores: 1.0, data_fraction: 0.0}
+    # Weak clients (IDs 30-44): 0.5 CPU, 512 MB
+    - {id: 30, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 31, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 32, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 33, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 34, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 35, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 36, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 37, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 38, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 39, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 40, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 41, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 42, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 43, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    - {id: 44, profile: "weak",         mem_limit_mb:  512, cpu_cores: 0.5, data_fraction: 0.0}
+    # Extreme-weak clients (IDs 45-49): 0.25 CPU, 256 MB
+    - {id: 45, profile: "extreme_weak", mem_limit_mb:  256, cpu_cores: 0.25, data_fraction: 0.0}
+    - {id: 46, profile: "extreme_weak", mem_limit_mb:  256, cpu_cores: 0.25, data_fraction: 0.0}
+    - {id: 47, profile: "extreme_weak", mem_limit_mb:  256, cpu_cores: 0.25, data_fraction: 0.0}
+    - {id: 48, profile: "extreme_weak", mem_limit_mb:  256, cpu_cores: 0.25, data_fraction: 0.0}
+    - {id: 49, profile: "extreme_weak", mem_limit_mb:  256, cpu_cores: 0.25, data_fraction: 0.0}
+
+data:
+  dataset: "cifar10"
+  partition: "iid"           # switch to "dirichlet" for non-IID experiment
+  dirichlet_alpha: 0.1       # used only if partition=dirichlet
+  reduced_fraction: 1.0      # full dataset (50,000 / 50 = 1,000 samples/client)
+  eval_fraction: 0.02        # 2% of test set per client
+  max_eval_samples_per_client: 200
+
+quantization:
+  mode: "adaptive"           # PPO-controlled per-client; switch to fixed_fp32 for baselines
+  fixed_bits: 32             # fallback for fixed_* modes
+  calibration_samples: 128   # paper-aligned: 128 samples for INT8 calibration
+
+fl:
+  local_epochs: 2            # paper: 2 epochs per round for convergence
+  batch_size: 32             # default; profile overrides used
+  per_profile_batch:
+    strong: 32
+    medium: 16
+    weak: 8
+    extreme_weak: 8
+  num_workers: 0             # VM-safe
+  pin_memory: false
+  optimizer: "sgd"
+  lr: 0.01
+  momentum: 0.9
+  weight_decay: 0.0001
+  min_clients_per_round: 1   # adaptive mode may select any subset
+
+rl:
+  algorithm: "ppo"
+  total_timesteps: 50        # = number of FL rounds
+  n_steps: 1                 # PPO updates every FL round
+  batch_size: 1
+  gamma_discount: 0.99
+  reward_alpha: 1.0          # paper: α=1.0
+  reward_beta: 0.5           # paper: β=0.5
+  reward_gamma_var: 0.1      # paper: γ=0.1
+  policy: "MlpPolicy"
+  checkpoint_dir: "outputs/checkpoints"
+  learning_rate: 0.0003
+
+logging:
+  level: "info"
+  metrics_dir: "outputs/metrics"
+  plots_dir: "outputs/plots"
