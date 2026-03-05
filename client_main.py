@@ -42,15 +42,6 @@ import flwr as fl
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [CLIENT-%(client_id)s] %(levelname)s %(message)s",
-    datefmt="%H:%M:%S",
-)
-
-# Patch logging format to include client_id before basicConfig takes full effect
-import logging as _logging
-
-_logging.basicConfig(
-    level=_logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
 )
@@ -185,15 +176,36 @@ def main() -> None:
     )
 
     # 5. Connect to server and start the gRPC client loop
+    # Retry logic: server may not be ready immediately after starting.
+    # Server loads CIFAR-10 and builds strategy before opening gRPC port (~10-30s).
     server_address = SERVER_ADDR
-    log.info(f"[Client {CLIENT_ID}] Connecting to server at {server_address} ...")
+    max_retries = int(os.environ.get("CLIENT_MAX_RETRIES", "20"))
+    retry_delay  = float(os.environ.get("CLIENT_RETRY_DELAY", "5.0"))
 
-    fl.client.start_client(
-        server_address=server_address,
-        client=flower_client.to_client(),
-    )
-
-    log.info(f"[Client {CLIENT_ID}] Disconnected from server. Done.")
+    import time
+    for attempt in range(max_retries):
+        try:
+            log.info(f"[Client {CLIENT_ID}] Connecting to {server_address} "
+                     f"(attempt {attempt + 1}/{max_retries}) ...")
+            fl.client.start_client(
+                server_address=server_address,
+                client=flower_client.to_client(),
+            )
+            log.info(f"[Client {CLIENT_ID}] Disconnected from server. Done.")
+            break
+        except Exception as e:
+            err_str = str(e)
+            if "UNAVAILABLE" in err_str or "Connection refused" in err_str:
+                if attempt < max_retries - 1:
+                    log.warning(
+                        f"[Client {CLIENT_ID}] Server not ready "
+                        f"(attempt {attempt + 1}/{max_retries}). "
+                        f"Retrying in {retry_delay}s ..."
+                    )
+                    time.sleep(retry_delay)
+                    continue
+            log.error(f"[Client {CLIENT_ID}] Connection failed: {e}")
+            raise
 
 
 if __name__ == "__main__":

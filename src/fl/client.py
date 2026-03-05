@@ -52,7 +52,7 @@ def _make_train_loader(
     data_root: str = "data/",
 ) -> DataLoader:
     """Build a training DataLoader from the client's partition indices."""
-    full_train_ds = get_cifar10_train(root=data_root, download=False, use_32=False)
+    full_train_ds = get_cifar10_train(root=data_root, download=True, use_32=False)
     subset = Subset(full_train_ds, train_indices)
     batch_size = cfg.fl.batch_size_for(profile.profile)
     return DataLoader(
@@ -70,7 +70,7 @@ def _make_eval_loader(
     data_root: str = "data/",
 ) -> DataLoader:
     """Build a local evaluation DataLoader from the client's test subset."""
-    full_test_ds = get_cifar10_test(root=data_root, download=False, use_32=False)
+    full_test_ds = get_cifar10_test(root=data_root, download=True, use_32=False)
     subset = Subset(full_test_ds, eval_indices)
     return DataLoader(
         subset,
@@ -87,7 +87,7 @@ def _make_calib_loader(
     data_root: str = "data/",
 ) -> DataLoader:
     """Build a tiny calibration DataLoader for INT8 static quantization."""
-    full_train_ds = get_cifar10_train(root=data_root, download=False, use_32=False)
+    full_train_ds = get_cifar10_train(root=data_root, download=True, use_32=False)
     calib_indices = train_indices[:min(n_samples, len(train_indices))]
     subset = Subset(full_train_ds, calib_indices)
     return DataLoader(

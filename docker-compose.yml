@@ -10,7 +10,7 @@ services:
     environment:
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
       SERVER_PORT: '8080'
       OUTPUTS_DIR: /outputs
       NUM_ROUNDS: '50'
@@ -48,7 +48,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -70,7 +70,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -92,7 +92,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -114,7 +114,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -136,7 +136,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -158,7 +158,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -180,7 +180,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -202,7 +202,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -224,7 +224,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -246,7 +246,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -268,7 +268,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -290,7 +290,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -312,7 +312,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -334,7 +334,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -356,7 +356,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -378,7 +378,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -400,7 +400,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -422,7 +422,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -444,7 +444,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -466,7 +466,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -488,7 +488,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -510,7 +510,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -532,7 +532,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -554,7 +554,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -576,7 +576,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -598,7 +598,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -620,7 +620,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -642,7 +642,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -664,7 +664,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -686,7 +686,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -708,7 +708,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -730,7 +730,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -752,7 +752,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -774,7 +774,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -796,7 +796,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -818,7 +818,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -840,7 +840,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -862,7 +862,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -884,7 +884,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -906,7 +906,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -928,7 +928,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -950,7 +950,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -972,7 +972,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -994,7 +994,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -1016,7 +1016,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -1038,7 +1038,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -1060,7 +1060,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -1082,7 +1082,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -1104,7 +1104,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:
@@ -1126,7 +1126,7 @@ services:
       SERVER_ADDR: server:8080
       CONFIG_PATH: configs/exp_docker_50clients.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
-      DATA_ROOT: /data/cifar10
+      DATA_ROOT: /data
     volumes: *id001
     networks: *id002
     depends_on:

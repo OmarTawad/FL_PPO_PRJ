@@ -1,21 +1,19 @@
-# docker-compose.smoke.yml
-# Stage 16 Smoke Test: 1 server + 3 clients (1 strong, 1 medium, 1 weak)
-# Purpose: validate gRPC connectivity + shared data volume + JSON logging
-# WITHOUT running all 50 clients (safe for 22 GB RAM host)
+# docker-compose.grpc_50rounds.yml
+# Docker gRPC 50-round validation: 1 server + 3 clients, 50 rounds, fixed FP32
 #
 # Run:
-#   docker compose -f docker-compose.smoke.yml up --build --abort-on-container-exit
+#   docker compose -f docker-compose.grpc_50rounds.yml up --build --abort-on-container-exit
 #
-# Expected outcome:
-#   - Server logs: "Simulation complete" or "Server disconnected"
-#   - outputs/metrics/run_*/round_001.json and round_002.json created
-#   - All required JSON fields present (see SPEC.md §8)
-#
-# After run:
-#   python3 scripts/plot_results.py outputs/metrics/run_<id>
-#   python3 scripts/summarize_run.py outputs/metrics/run_<id>
+# Expected outputs:
+#   outputs/metrics/run_<id>/round_001.json … round_050.json
+#   outputs/metrics/run_<id>/summary.json
+#   outputs/plots/run_<id>/*.png (5 plots)
 
-name: fl_ppo_smoke
+name: fl_ppo_grpc_50rounds
+
+x-base-build: &base-build
+  context: .
+  dockerfile: docker/Dockerfile.base
 
 services:
 
@@ -24,15 +22,15 @@ services:
       context: .
       dockerfile: docker/Dockerfile.server
     image: fl_ppo_server:latest
-    container_name: fl_server_smoke
+    container_name: fl_server_grpc50
     hostname: server
     environment:
-      CONFIG_PATH: configs/exp_docker_smoke.yaml
+      CONFIG_PATH: configs/exp_docker_grpc_50rounds.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
       DATA_ROOT: /data
       SERVER_PORT: "8080"
       OUTPUTS_DIR: /outputs
-      NUM_ROUNDS: "2"
+      NUM_ROUNDS: "50"
     ports:
       - "8080:8080"
     volumes:
@@ -40,36 +38,35 @@ services:
       - ./outputs:/outputs
       - ./configs:/app/configs:ro
     networks:
-      - fl_smoke_net
+      - fl_grpc50_net
     deploy:
       resources:
         limits:
           cpus: "8"
           memory: "12288m"
-    # Server waits for all clients to register before starting rounds
     healthcheck:
       test: ["CMD-SHELL", "echo healthy"]
       interval: "5s"
       timeout: "3s"
-      retries: 5
+      retries: 10
 
   client_00:
     build:
       context: .
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_00_smoke
+    container_name: fl_client_00_grpc50
     environment:
       CLIENT_ID: "0"
       SERVER_ADDR: "server:8080"
-      CONFIG_PATH: configs/exp_docker_smoke.yaml
+      CONFIG_PATH: configs/exp_docker_grpc_50rounds.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
       DATA_ROOT: /data
     volumes:
       - ./data:/data:ro
       - ./configs:/app/configs:ro
     networks:
-      - fl_smoke_net
+      - fl_grpc50_net
     depends_on:
       - server
     deploy:
@@ -84,25 +81,25 @@ services:
       context: .
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_01_smoke
+    container_name: fl_client_01_grpc50
     environment:
       CLIENT_ID: "1"
       SERVER_ADDR: "server:8080"
-      CONFIG_PATH: configs/exp_docker_smoke.yaml
+      CONFIG_PATH: configs/exp_docker_grpc_50rounds.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
       DATA_ROOT: /data
     volumes:
       - ./data:/data:ro
       - ./configs:/app/configs:ro
     networks:
-      - fl_smoke_net
+      - fl_grpc50_net
     depends_on:
       - server
     deploy:
       resources:
         limits:
           cpus: "1"
-          memory: "1024m"
+          memory: "2048m"
     restart: "no"
 
   client_02:
@@ -110,27 +107,27 @@ services:
       context: .
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_02_smoke
+    container_name: fl_client_02_grpc50
     environment:
       CLIENT_ID: "2"
       SERVER_ADDR: "server:8080"
-      CONFIG_PATH: configs/exp_docker_smoke.yaml
+      CONFIG_PATH: configs/exp_docker_grpc_50rounds.yaml
       PARTITION_FILE: /data/partitions_50_iid.json
       DATA_ROOT: /data
     volumes:
       - ./data:/data:ro
       - ./configs:/app/configs:ro
     networks:
-      - fl_smoke_net
+      - fl_grpc50_net
     depends_on:
       - server
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: "512m"
+          cpus: "1"
+          memory: "2048m"
     restart: "no"
 
 networks:
-  fl_smoke_net:
+  fl_grpc50_net:
     driver: bridge

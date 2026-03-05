@@ -1,0 +1,75 @@
+# configs/exp_50rounds_3clients.yaml
+# 50-round validation config — 3 clients, reduced data, stochastic dropout.
+# Purpose: Prove the system completes 50 FL rounds and produces required JSON logs.
+#
+# Paper alignment:
+#   - num_rounds=50 (matches paper §5: "Rounds: 50")
+#   - MobileNetV2 + CIFAR-10 + 224x224 (enforced by client.py hardguard)
+#   - IID partition, FP32 baseline (simplest path for validation)
+#   - Stochastic dropout mode (no Docker needed)
+#   - reduced_fraction=0.02 → 250 train samples / client (fast smoke)
+#
+# Run with:
+#   python3 src/fl/server.py --config configs/exp_50rounds_3clients.yaml
+
+experiment:
+  name: "exp_50rounds_3clients"
+  rounds: 50
+  seed: 42
+  dropout_mode: "stochastic"
+
+clients:
+  count: 3
+  profiles:
+    - id: 0
+      profile: "strong"
+      mem_limit_mb: 2048
+      cpu_cores: 2.0
+      data_fraction: 0.0
+    - id: 1
+      profile: "medium"
+      mem_limit_mb: 1024
+      cpu_cores: 1.0
+      data_fraction: 0.0
+    - id: 2
+      profile: "weak"
+      mem_limit_mb: 512
+      cpu_cores: 0.5
+      data_fraction: 0.0
+
+data:
+  dataset: "cifar10"
+  partition: "iid"
+  dirichlet_alpha: 0.1
+  reduced_fraction: 0.02   # 250 train images/client → fast but paper-correct 224x224 inputs
+
+quantization:
+  mode: "fixed_fp32"
+  fixed_bits: 32
+  calibration_samples: 8
+
+fl:
+  local_epochs: 1
+  batch_size: 2
+  per_profile_batch:
+    strong: 2
+    medium: 2
+    weak: 1
+    extreme_weak: 1
+  num_workers: 0
+  pin_memory: false
+  optimizer: "sgd"
+  lr: 0.01
+  momentum: 0.9
+  weight_decay: 0.0001
+  min_clients_per_round: 1
+
+rl:
+  algorithm: "ppo"
+  total_timesteps: 50
+  n_steps: 1
+
+logging:
+  level: "info"
+  metrics_dir: "outputs/metrics"
+  plots_dir: "outputs/plots"

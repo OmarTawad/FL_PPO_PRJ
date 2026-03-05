@@ -1,31 +1,49 @@
 # docker/Dockerfile.client
-# FL PPO Paper — Flower Client Container
-# Stage 14: Inherits from fl_ppo_base, runs client_main.py
+# FL PPO Paper — Flower Client Container (self-contained, no external base needed)
+# Stage 14: Python 3.11 + all deps + client_main.py entrypoint
 #
 # Build:
 #   docker build -f docker/Dockerfile.client -t fl_ppo_client:latest .
 #
-# Run (example for client 0):
-#   docker run --rm \
-#     -e CLIENT_ID=0 \
-#     -e SERVER_ADDR=server:8080 \
-#     -e CONFIG_PATH=configs/exp_docker_smoke.yaml \
-#     -e PARTITION_FILE=/data/partitions_50_iid.json \
-#     -v $(pwd)/data:/data:ro \
-#     fl_ppo_client:latest
-#
-# Resource limits (set in docker-compose.yml, NOT hardcoded here):
-#   Strong:       --cpus 2.0 --memory 2048m
-#   Medium:       --cpus 1.0 --memory 1024m
-#   Weak:         --cpus 0.5 --memory 512m
-#   Extreme-weak: --cpus 0.25 --memory 256m
+# Run (via docker-compose, resource limits set per tier):
+#   docker compose -f docker-compose.grpc_50rounds.yml up
 
-FROM fl_ppo_base:latest
+FROM python:3.11-slim
 
-# Client entrypoint
-ENTRYPOINT ["python3", "/app/client_main.py"]
+# ── System dependencies ───────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Default environment (overridden per container by docker-compose.yml)
+# ── Python environment ────────────────────────────────────────────────────────
+WORKDIR /app
+
+RUN pip install --no-cache-dir --upgrade pip
+
+# Install PyTorch CPU-only first (large layer, cached separately)
+RUN pip install --no-cache-dir \
+    torch==2.2.2+cpu \
+    torchvision==0.17.2+cpu \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+
+# Install all other requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+
+# ── Project source ────────────────────────────────────────────────────────────
+COPY src/ /app/src/
+COPY configs/ /app/configs/
+COPY client_main.py /app/client_main.py
+
+# ── Environment (overridden by docker-compose.yml per container) ──────────────
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+ENV DATA_ROOT=/data
+ENV PARTITION_FILE=/data/partitions_50_iid.json
 ENV CLIENT_ID=0
 ENV SERVER_ADDR=server:8080
 ENV CONFIG_PATH=configs/exp_docker_smoke.yaml
+
+ENTRYPOINT ["python3", "/app/client_main.py"]

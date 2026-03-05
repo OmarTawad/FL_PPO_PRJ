@@ -91,7 +91,7 @@ def _build_server_test_loader(cfg: Config, data_root: str) -> DataLoader:
         batch_size=2,
         server_fraction=0.10,
         seed=cfg.experiment.seed,
-        download=False,    # data pre-downloaded by download_and_partition.py
+        download=True,     # safe: PyTorch skips download if data already exists
         use_32=False,
         num_workers=cfg.fl.num_workers,
         pin_memory=cfg.fl.pin_memory,
