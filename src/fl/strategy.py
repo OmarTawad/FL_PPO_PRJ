@@ -42,7 +42,7 @@ from flwr.server.strategy import FedAvg
 from torch.utils.data import DataLoader
 
 from src.common.config import Config
-from src.models.mobilenetv2 import get_model, set_parameters
+from src.models.mobilenetv2 import get_model, set_parameters, get_parameters
 from src.models.trainer import evaluate
 from src.heterogeneity.dropout import DropoutTracker
 
@@ -84,6 +84,9 @@ class FedAvgQuant(FedAvg):
         self.global_model = get_model(
             freeze_features=self.cfg.fl.freeze_features
         )
+        self._state_keys = list(self.global_model.state_dict().keys())
+        self._global_params_nd = parameters_to_ndarrays(initial_parameters)
+        set_parameters(self.global_model, self._global_params_nd)
 
         # State reset between env episodes
         self._prev_accuracy: Optional[float] = None
@@ -93,6 +96,8 @@ class FedAvgQuant(FedAvg):
         # Dict[str, int] mapping cid → quant_bits for selected clients only.
         # None in Phase 6 (fixed) mode.
         self.current_quant_assignments: Optional[Dict[str, int]] = None
+        # gRPC mode uses opaque proxy IDs; map them to logical client IDs 0..N-1.
+        self._proxy_to_logical: Dict[str, int] = {}
 
     # ── Public: env.reset() ────────────────────────────────────────────────────
 
@@ -101,6 +106,7 @@ class FedAvgQuant(FedAvg):
         self._prev_accuracy = None
         self.last_round_log = {}
         self.current_quant_assignments = None
+        self._proxy_to_logical = {}
 
     # ── configure_fit ──────────────────────────────────────────────────────────
 
@@ -196,18 +202,47 @@ class FedAvgQuant(FedAvg):
             self.last_round_log = {}
             return None, {}
 
+        # Keep BN running statistics/counters from previous global state when disabled.
+        params_ndarrays = parameters_to_ndarrays(aggregated_params)
+        if not self.cfg.fl.aggregate_bn_buffers:
+            if len(params_ndarrays) == len(self._state_keys) == len(self._global_params_nd):
+                for idx, name in enumerate(self._state_keys):
+                    if (
+                        name.endswith("running_mean")
+                        or name.endswith("running_var")
+                        or name.endswith("num_batches_tracked")
+                    ):
+                        params_ndarrays[idx] = self._global_params_nd[idx]
+            else:
+                log.warning(
+                    "[Strategy] aggregate_bn_buffers=False but state length mismatch; "
+                    "falling back to aggregated tensors for this round."
+                )
+        aggregated_params = ndarrays_to_parameters(params_ndarrays)
+
         # 2. Per-client metrics
         selected_clients: List[str] = []
         quant_assignments: Dict[str, int] = {}
         actual_quant_methods: Dict[str, str] = {}
         train_losses: List[float] = []
+        selected_ids_int: set[int] = set()
+        failed_ids_int: set[int] = set()
+        used_ids: set[int] = set()
         # Use a set to deduplicate dropout clients
         dropout_set: set = set()
 
         for client_proxy, fit_res in results:
-            cid = str(client_proxy.cid)
-            selected_clients.append(cid)
+            proxy_cid = str(client_proxy.cid)
             m = fit_res.metrics or {}
+            cid_int = self._resolve_logical_client_id(
+                proxy_cid=proxy_cid,
+                metrics=m,
+                used_ids=used_ids,
+            )
+            used_ids.add(cid_int)
+            selected_ids_int.add(cid_int)
+            cid = str(cid_int)
+            selected_clients.append(cid)
 
             bits = int(m.get("quant_bits_requested", 32))
             method = str(m.get("quant_method_actual", "fp32"))
@@ -222,31 +257,51 @@ class FedAvgQuant(FedAvg):
                     and float(loss_val) >= 0.0):
                 train_losses.append(float(loss_val))
 
-            cid_int = int(cid)
             if dropped:
                 dropout_set.add(cid)
                 self.dropout_tracker.record(cid_int, dropped=True)
             else:
                 self.dropout_tracker.record(cid_int, dropped=False)
 
-        # Record skipped clients
-        all_cids = set(range(self.cfg.clients.count))
-        result_cids = {int(c) for c in selected_clients}
-        for cid_int in all_cids - result_cids:
-            self.dropout_tracker.record_not_selected(cid_int)
-
         # Framework-level failures (deduplicated into set)
         for f in failures:
             if isinstance(f, tuple) and hasattr(f[0], "cid"):
-                dropout_set.add(str(f[0].cid))
+                proxy_cid = str(f[0].cid)
+                cid_int = self._resolve_logical_client_id(
+                    proxy_cid=proxy_cid,
+                    metrics=None,
+                    used_ids=used_ids,
+                )
+                used_ids.add(cid_int)
+                failed_ids_int.add(cid_int)
+                dropout_set.add(str(cid_int))
+                self.dropout_tracker.record(cid_int, dropped=True)
+
+        # Record skipped clients
+        all_cids = set(range(self.cfg.clients.count))
+        attempted_ids = selected_ids_int | failed_ids_int
+        for cid_int in all_cids - attempted_ids:
+            self.dropout_tracker.record_not_selected(cid_int)
 
         dropout_client_ids = sorted(dropout_set)
-        n_total = len(selected_clients) + len(failures)
-        dropout_fraction = len(dropout_set & set(selected_clients)) / max(1, len(selected_clients))
+        dropout_fraction = len(dropout_set) / max(1, len(attempted_ids))
 
-        # 3. Global model evaluation on server test set
-        params_ndarrays = parameters_to_ndarrays(aggregated_params)
+        # 3. Global model update + (optional) BN recalibration + server evaluation
         set_parameters(self.global_model, params_ndarrays)
+        if not self.cfg.fl.aggregate_bn_buffers:
+            n_bn, n_batches = self._recalibrate_batchnorm(
+                self.global_model,
+                self.server_test_loader,
+                device=torch.device("cpu"),
+            )
+            log.info(
+                f"[Strategy] round={server_round} BN recalibration: "
+                f"bn_layers={n_bn} batches={n_batches}"
+            )
+            # Push recalibrated BN buffers into next-round broadcast parameters.
+            params_ndarrays = get_parameters(self.global_model)
+            aggregated_params = ndarrays_to_parameters(params_ndarrays)
+        self._global_params_nd = [arr.copy() for arr in params_ndarrays]
         self.global_model.eval()
         eval_result = evaluate(
             self.global_model, self.server_test_loader,
@@ -337,3 +392,97 @@ class FedAvgQuant(FedAvg):
             return 8
         else:
             return self.cfg.quantization.fixed_bits
+
+    def _recalibrate_batchnorm(
+        self,
+        model: torch.nn.Module,
+        loader: DataLoader,
+        device: torch.device,
+    ) -> Tuple[int, int]:
+        """
+        Recompute BN running stats using forward-only passes over server data.
+
+        This is used when aggregate_bn_buffers=False to avoid stale BN buffers
+        after excluding cross-client BN-stat averaging.
+        """
+        bn_layers = [
+            m for m in model.modules()
+            if isinstance(m, torch.nn.modules.batchnorm._BatchNorm)
+        ]
+        if not bn_layers:
+            return 0, 0
+
+        model.eval()
+        for bn in bn_layers:
+            bn.reset_running_stats()
+            bn.train()
+
+        try:
+            model_dtype = next(model.parameters()).dtype
+        except StopIteration:
+            model_dtype = torch.float32
+
+        n_batches = 0
+        with torch.no_grad():
+            for images, _ in loader:
+                images = images.to(device=device, dtype=model_dtype)
+                model(images)
+                n_batches += 1
+
+        model.eval()
+        return len(bn_layers), n_batches
+
+    def _parse_logical_cid(self, raw_cid: object) -> Optional[int]:
+        """Parse and validate a logical client ID in [0, n_clients)."""
+        try:
+            cid_int = int(raw_cid)
+        except (TypeError, ValueError):
+            return None
+        if 0 <= cid_int < self.cfg.clients.count:
+            return cid_int
+        return None
+
+    def _resolve_logical_client_id(
+        self,
+        proxy_cid: str,
+        metrics: Optional[Dict[str, Scalar]],
+        used_ids: set[int],
+    ) -> int:
+        """
+        Resolve logical client ID for this round using a safe fallback chain.
+
+        Priority:
+          1) fit_res.metrics["client_id"]
+          2) cached proxy_cid -> logical_id map from prior rounds
+          3) numeric proxy_cid (when not opaque gRPC UUID)
+          4) first unused logical ID in [0, n_clients-1], then 0 as final fallback
+        """
+        if metrics is not None:
+            metric_cid = self._parse_logical_cid(metrics.get("client_id"))
+            if metric_cid is not None:
+                self._proxy_to_logical[proxy_cid] = metric_cid
+                return metric_cid
+
+        cached_cid = self._proxy_to_logical.get(proxy_cid)
+        if cached_cid is not None and 0 <= cached_cid < self.cfg.clients.count:
+            return cached_cid
+
+        parsed_proxy_cid = self._parse_logical_cid(proxy_cid)
+        if parsed_proxy_cid is not None:
+            self._proxy_to_logical[proxy_cid] = parsed_proxy_cid
+            return parsed_proxy_cid
+
+        for cid_int in range(self.cfg.clients.count):
+            if cid_int not in used_ids:
+                self._proxy_to_logical[proxy_cid] = cid_int
+                log.warning(
+                    f"[Strategy] Could not resolve logical client_id from proxy cid '{proxy_cid}'. "
+                    f"Assigned fallback logical id={cid_int}."
+                )
+                return cid_int
+
+        log.warning(
+            f"[Strategy] Exhausted logical client IDs while resolving proxy cid '{proxy_cid}'. "
+            "Falling back to logical id=0."
+        )
+        return 0

@@ -9,11 +9,11 @@ services:
     hostname: server
     environment:
       CONFIG_PATH: experiments/exp01_baseline/config_validation.yaml
-      PARTITION_FILE: /data/partitions_50_iid.json
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
       DATA_ROOT: /data
       SERVER_PORT: '8080'
       OUTPUTS_DIR: /outputs/exp01_baseline
-      NUM_ROUNDS: '3'
+      NUM_ROUNDS: '5'
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
       OPENBLAS_NUM_THREADS: '1'
@@ -47,7 +47,7 @@ services:
       CLIENT_ID: '0'
       SERVER_ADDR: server:8080
       CONFIG_PATH: experiments/exp01_baseline/config_validation.yaml
-      PARTITION_FILE: /data/partitions_50_iid.json
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -75,7 +75,7 @@ services:
       CLIENT_ID: '1'
       SERVER_ADDR: server:8080
       CONFIG_PATH: experiments/exp01_baseline/config_validation.yaml
-      PARTITION_FILE: /data/partitions_50_iid.json
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -103,7 +103,7 @@ services:
       CLIENT_ID: '2'
       SERVER_ADDR: server:8080
       CONFIG_PATH: experiments/exp01_baseline/config_validation.yaml
-      PARTITION_FILE: /data/partitions_50_iid.json
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -131,7 +131,7 @@ services:
       CLIENT_ID: '3'
       SERVER_ADDR: server:8080
       CONFIG_PATH: experiments/exp01_baseline/config_validation.yaml
-      PARTITION_FILE: /data/partitions_50_iid.json
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -159,7 +159,7 @@ services:
       CLIENT_ID: '4'
       SERVER_ADDR: server:8080
       CONFIG_PATH: experiments/exp01_baseline/config_validation.yaml
-      PARTITION_FILE: /data/partitions_50_iid.json
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -187,7 +187,7 @@ services:
       CLIENT_ID: '5'
       SERVER_ADDR: server:8080
       CONFIG_PATH: experiments/exp01_baseline/config_validation.yaml
-      PARTITION_FILE: /data/partitions_50_iid.json
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -215,7 +215,7 @@ services:
       CLIENT_ID: '6'
       SERVER_ADDR: server:8080
       CONFIG_PATH: experiments/exp01_baseline/config_validation.yaml
-      PARTITION_FILE: /data/partitions_50_iid.json
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -243,7 +243,7 @@ services:
       CLIENT_ID: '7'
       SERVER_ADDR: server:8080
       CONFIG_PATH: experiments/exp01_baseline/config_validation.yaml
-      PARTITION_FILE: /data/partitions_50_iid.json
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -271,7 +271,7 @@ services:
       CLIENT_ID: '8'
       SERVER_ADDR: server:8080
       CONFIG_PATH: experiments/exp01_baseline/config_validation.yaml
-      PARTITION_FILE: /data/partitions_50_iid.json
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -299,7 +299,7 @@ services:
       CLIENT_ID: '9'
       SERVER_ADDR: server:8080
       CONFIG_PATH: experiments/exp01_baseline/config_validation.yaml
-      PARTITION_FILE: /data/partitions_50_iid.json
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'

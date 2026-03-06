@@ -33,12 +33,12 @@ quantization:
 
 fl:
   local_epochs: 2
-  batch_size: 32
+  batch_size: 8
   per_profile_batch:
-    strong: 32
-    medium: 32
-    weak: 32
-    extreme_weak: 32
+    strong: 8
+    medium: 8
+    weak: 8
+    extreme_weak: 8
   num_workers: 0
   pin_memory: false
   optimizer: "sgd"
@@ -47,6 +47,7 @@ fl:
   weight_decay: 0.0001
   freeze_features: false
   min_clients_per_round: 10
+  aggregate_bn_buffers: false
 
 rl:
   algorithm: "ppo"

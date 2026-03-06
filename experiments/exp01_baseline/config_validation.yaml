@@ -1,6 +1,6 @@
 experiment:
   name: "exp01_baseline_val"
-  rounds: 3
+  rounds: 5
   seed: 42
   dropout_mode: "stochastic"
 
@@ -22,7 +22,8 @@ data:
   dataset: "cifar10"
   partition: "iid"
   dirichlet_alpha: 0.1
-  reduced_fraction: 1.0
+  reduced_fraction: 0.2
+  use_32: false
   eval_fraction: 0.10
   max_eval_samples_per_client: 0
 
@@ -32,20 +33,22 @@ quantization:
   calibration_samples: 128
 
 fl:
-  local_epochs: 3
-  batch_size: 32
+  local_epochs: 2
+  batch_size: 8
   per_profile_batch:
-    strong: 32
-    medium: 32
-    weak: 32
-    extreme_weak: 32
+    strong: 8
+    medium: 8
+    weak: 8
+    extreme_weak: 8
   num_workers: 0
   pin_memory: false
   optimizer: "sgd"
-  lr: 0.001
+  lr: 0.01
   momentum: 0.9
   weight_decay: 0.0001
+  freeze_features: false
   min_clients_per_round: 10
+  aggregate_bn_buffers: false
 
 rl:
   algorithm: "ppo"

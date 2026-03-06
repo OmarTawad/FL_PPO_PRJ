@@ -133,6 +133,7 @@ class FLConfig:
     weight_decay: float = 1e-4
     freeze_features: bool = True
     min_clients_per_round: int = 1
+    aggregate_bn_buffers: bool = True
 
     def batch_size_for(self, profile: str) -> int:
         """Return the batch size appropriate for a given resource profile."""
@@ -246,6 +247,7 @@ def _parse_fl(raw: dict) -> FLConfig:
         weight_decay=float(raw.get("weight_decay", 1e-4)),
         freeze_features=bool(raw.get("freeze_features", True)),
         min_clients_per_round=int(raw.get("min_clients_per_round", 1)),
+        aggregate_bn_buffers=bool(raw.get("aggregate_bn_buffers", True)),
     )
 
 

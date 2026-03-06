@@ -3,11 +3,21 @@ import os
 import json
 import subprocess
 import sys
+import glob
 
-run_dir = "outputs/exp01_baseline/metrics/run_20260306_111302"
 compose_file = "docker/docker-compose.exp01.yml"
+base_dir = "outputs/exp01_baseline/metrics"
 
 print("Starting monitor for round 15 checkpoint...", flush=True)
+
+# Wait for a new run directory to appear
+time.sleep(5)
+run_dirs = sorted(glob.glob(os.path.join(base_dir, "run_*")))
+if not run_dirs:
+    print("No run directory found. Exiting.", flush=True)
+    sys.exit(1)
+run_dir = run_dirs[-1]
+print(f"Monitoring directory: {run_dir}", flush=True)
 
 round_15_checked = False
 

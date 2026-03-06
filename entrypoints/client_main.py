@@ -92,6 +92,30 @@ def _load_client_partition(partition_file: str, client_id: int):
     return train_indices, eval_indices
 
 
+def _apply_reduced_fraction(
+    train_indices: list[int],
+    reduced_fraction: float,
+    seed: int,
+    client_id: int,
+) -> list[int]:
+    """
+    Apply config.data.reduced_fraction to partition-file train indices.
+
+    The partition JSON stores full train shards, so we sub-sample here to keep
+    Docker gRPC runs consistent with config-based reduced_fraction experiments.
+    """
+    if reduced_fraction >= 1.0:
+        return train_indices
+
+    import random
+
+    n_keep = max(1, int(len(train_indices) * reduced_fraction))
+    rng = random.Random(seed + client_id)
+    sampled = rng.sample(train_indices, n_keep)
+    sampled.sort()
+    return sampled
+
+
 # ── Profile from partition tier ───────────────────────────────────────────────
 
 def _build_profile_from_partition(
@@ -157,6 +181,12 @@ def main() -> None:
 
     # 2. Load this client's data partition
     train_indices, eval_indices = _load_client_partition(PARTITION_FILE, CLIENT_ID)
+    train_indices = _apply_reduced_fraction(
+        train_indices=train_indices,
+        reduced_fraction=cfg.data.reduced_fraction,
+        seed=cfg.experiment.seed,
+        client_id=CLIENT_ID,
+    )
     log.info(f"  Train idx   : {len(train_indices)} samples")
     log.info(f"  Eval idx    : {len(eval_indices)} samples")
 
