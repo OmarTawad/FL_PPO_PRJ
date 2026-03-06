@@ -96,9 +96,10 @@ def train_one_epoch(
     t0 = time.perf_counter()
 
     try:
+        grad_check_done = False
         for batch_idx, (images, labels) in enumerate(loader):
             images = images.to(device=device, dtype=model_dtype)
-            labels = labels.to(device)
+            labels = labels.to(device).view(-1).long()
 
             optimizer.zero_grad(set_to_none=True)
 
@@ -111,6 +112,19 @@ def train_one_epoch(
 
             loss = criterion(outputs, labels)
             loss.backward()
+
+            if not grad_check_done:
+                has_grad = any(
+                    p.grad is not None
+                    for p in model.parameters()
+                    if p.requires_grad
+                )
+                if not has_grad:
+                    raise RuntimeError(
+                        "Gradient flow check failed: no gradients found "
+                        "after backward pass."
+                    )
+                grad_check_done = True
 
             if grad_clip_norm > 0.0:
                 nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip_norm)
@@ -177,7 +191,7 @@ def evaluate(
 
     for images, labels in loader:
         images = images.to(device=device, dtype=model_dtype)
-        labels = labels.to(device)
+        labels = labels.to(device).view(-1).long()
 
         outputs = model(images)
         if outputs.dtype != torch.float32:

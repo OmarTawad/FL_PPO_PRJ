@@ -1,0 +1,58 @@
+experiment:
+  name: "exp1_homogeneous_iid_10clients"
+  rounds: 50
+  seed: 42
+  dropout_mode: "stochastic"
+
+clients:
+  count: 10
+  profiles:
+    - {id: 0, profile: "strong", mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id: 1, profile: "strong", mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id: 2, profile: "strong", mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id: 3, profile: "strong", mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id: 4, profile: "strong", mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id: 5, profile: "strong", mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id: 6, profile: "strong", mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id: 7, profile: "strong", mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id: 8, profile: "strong", mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+    - {id: 9, profile: "strong", mem_limit_mb: 2048, cpu_cores: 2.0, data_fraction: 0.0}
+
+data:
+  dataset: "cifar10"
+  partition: "iid"
+  dirichlet_alpha: 0.1
+  reduced_fraction: 1.0
+  eval_fraction: 0.10
+  max_eval_samples_per_client: 0
+
+quantization:
+  mode: "fixed_fp32"
+  fixed_bits: 32
+  calibration_samples: 128
+
+fl:
+  local_epochs: 3
+  batch_size: 32
+  per_profile_batch:
+    strong: 32
+    medium: 32
+    weak: 32
+    extreme_weak: 32
+  num_workers: 0
+  pin_memory: false
+  optimizer: "sgd"
+  lr: 0.001
+  momentum: 0.9
+  weight_decay: 0.0001
+  min_clients_per_round: 10
+
+rl:
+  algorithm: "ppo"
+  total_timesteps: 50
+  n_steps: 1
+
+logging:
+  level: "info"
+  metrics_dir: "outputs/metrics"
+  plots_dir: "outputs/plots"

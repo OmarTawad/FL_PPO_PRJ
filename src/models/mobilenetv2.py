@@ -7,9 +7,9 @@ Classes: 10 (CIFAR-10)
 
 Design notes:
   - Randomly initialized (no ImageNet pretrained weights) for fair FL comparison.
-  - Classifier head replaced to match num_classes=10.
-  - Conv-BN-ReLU patterns are preserved for compatibility with PyTorch static INT8
-    quantization (prepare → fuse → calibrate → convert) in Stage 4.
+  - Classifier head is explicitly 10-way and checked with an assertion.
+  - AdaptiveAvgPool2d((1,1)) is explicitly present before the classifier.
+  - Feature extractor can be frozen during initial training.
   - get_parameters() / set_parameters() helpers for Flower parameter exchange.
   - FP32 by default; FP16 via .half(); INT8 quantization handled by compression layer.
 """
@@ -22,14 +22,47 @@ from typing import List
 import numpy as np
 import torch
 import torch.nn as nn
-from torchvision.models import MobileNet_V2_Weights, mobilenet_v2
+from torchvision.models import mobilenet_v2
 
 NUM_CLASSES = 10
 # Approximate unquantized MobileNetV2 param count (for logging)
 _EXPECTED_PARAMS_M = 3.5  # ~3.5 M parameters (num_classes=10 head)
 
 
-def get_model(num_classes: int = NUM_CLASSES) -> nn.Module:
+class MobileNetV2CIFAR(nn.Module):
+    """MobileNetV2 with explicit avgpool and CIFAR-10 classifier head."""
+
+    def __init__(self, num_classes: int = NUM_CLASSES, freeze_features: bool = True):
+        super().__init__()
+        if num_classes != 10:
+            raise ValueError(
+                f"MobileNetV2CIFAR supports only 10 classes, got {num_classes}"
+            )
+        model = mobilenet_v2(weights=None)
+        in_features = model.classifier[-1].in_features
+        model.classifier[-1] = nn.Linear(in_features, 10)
+
+        self.features = model.features
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.classifier = model.classifier
+        assert self.classifier[-1].out_features == 10, (
+            f"MobileNetV2 head must output 10 classes, got "
+            f"{self.classifier[-1].out_features}"
+        )
+
+        if freeze_features:
+            for p in self.features.parameters():
+                p.requires_grad = False
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.features(x)
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.classifier(x)
+        return x
+
+
+def get_model(num_classes: int = NUM_CLASSES, freeze_features: bool = True) -> nn.Module:
     """
     Return a randomly-initialized MobileNetV2 for CIFAR-10.
 
@@ -43,10 +76,15 @@ def get_model(num_classes: int = NUM_CLASSES) -> nn.Module:
         weights=None → no pretrained weights (paper-aligned: train from scratch in FL).
         classifier[1] replaced to match num_classes.
     """
-    model = mobilenet_v2(weights=None)
-    # Replace the final classifier to match num_classes
-    in_features = model.classifier[1].in_features
-    model.classifier[1] = nn.Linear(in_features, num_classes)
+    model = MobileNetV2CIFAR(
+        num_classes=num_classes,
+        freeze_features=freeze_features,
+    )
+    if model.classifier[-1].out_features != 10:
+        raise AssertionError(
+            f"Expected MobileNetV2 classifier out_features=10, got "
+            f"{model.classifier[-1].out_features}"
+        )
     return model
 
 

@@ -35,7 +35,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 # ── Project source ────────────────────────────────────────────────────────────
 COPY src/ /app/src/
 COPY configs/ /app/configs/
-COPY client_main.py /app/client_main.py
+COPY entrypoints/ /app/entrypoints/
 
 # ── Environment (overridden by docker-compose.yml per container) ──────────────
 ENV PYTHONUNBUFFERED=1
@@ -46,4 +46,4 @@ ENV CLIENT_ID=0
 ENV SERVER_ADDR=server:8080
 ENV CONFIG_PATH=configs/exp_docker_smoke.yaml
 
-ENTRYPOINT ["python3", "/app/client_main.py"]
+ENTRYPOINT ["python3", "/app/entrypoints/client_main.py"]

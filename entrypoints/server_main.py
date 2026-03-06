@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
-PROJECT_ROOT = str(Path(__file__).resolve().parent)
+PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
@@ -92,7 +92,7 @@ def _build_server_test_loader(cfg: Config, data_root: str) -> DataLoader:
         server_fraction=0.10,
         seed=cfg.experiment.seed,
         download=True,     # safe: PyTorch skips download if data already exists
-        use_32=False,
+        use_32=cfg.data.use_32,
         num_workers=cfg.fl.num_workers,
         pin_memory=cfg.fl.pin_memory,
     )
@@ -117,7 +117,7 @@ def _build_strategy(
     output_dir: Path,
 ) -> FedAvgQuant:
     """Instantiate FedAvgQuant with fresh global model parameters."""
-    init_model = get_model()
+    init_model = get_model(freeze_features=cfg.fl.freeze_features)
     initial_parameters = ndarrays_to_parameters(get_parameters(init_model))
 
     return FedAvgQuant(

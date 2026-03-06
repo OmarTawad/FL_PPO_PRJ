@@ -75,6 +75,8 @@ class DataConfig:
     partition: str = "iid"             # iid | dirichlet
     dirichlet_alpha: float = 0.1
     reduced_fraction: float = 1.0
+    use_32: bool = False               # False=224x224 paper path, True=native 32x32
+    train_augment: bool = True
     eval_fraction: float = 0.10        # fraction of test set per client (for evaluate phase)
     max_eval_samples_per_client: int = 0  # 0 = use eval_fraction; >0 caps samples
 
@@ -129,6 +131,7 @@ class FLConfig:
     lr: float = 0.01
     momentum: float = 0.9
     weight_decay: float = 1e-4
+    freeze_features: bool = True
     min_clients_per_round: int = 1
 
     def batch_size_for(self, profile: str) -> int:
@@ -241,6 +244,7 @@ def _parse_fl(raw: dict) -> FLConfig:
         lr=float(raw.get("lr", 0.01)),
         momentum=float(raw.get("momentum", 0.9)),
         weight_decay=float(raw.get("weight_decay", 1e-4)),
+        freeze_features=bool(raw.get("freeze_features", True)),
         min_clients_per_round=int(raw.get("min_clients_per_round", 1)),
     )
 
@@ -303,6 +307,8 @@ def load_config(path: str) -> Config:
         partition=str(d.get("partition", "iid")),
         dirichlet_alpha=float(d.get("dirichlet_alpha", 0.1)),
         reduced_fraction=float(d.get("reduced_fraction", 1.0)),
+        use_32=bool(d.get("use_32", False)),
+        train_augment=bool(d.get("train_augment", True)),
         eval_fraction=float(d.get("eval_fraction", 0.10)),
         max_eval_samples_per_client=int(d.get("max_eval_samples_per_client", 0)),
     )

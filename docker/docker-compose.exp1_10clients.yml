@@ -1,0 +1,282 @@
+name: fl_ppo_exp1_10clients
+services:
+  server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    image: fl_ppo_server:latest
+    container_name: fl_server_exp1_10
+    hostname: server
+    environment:
+      CONFIG_PATH: configs/exp1_homogeneous_iid_10clients.yaml
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
+      DATA_ROOT: /data
+      SERVER_PORT: '8080'
+      OUTPUTS_DIR: /outputs
+      NUM_ROUNDS: '50'
+    ports:
+    - 8080:8080
+    volumes:
+    - ./data:/data:ro
+    - ./outputs:/outputs
+    - ./configs:/app/configs:ro
+    networks:
+    - fl_exp1_net
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 12288m
+  client_00:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_00_exp1_10
+    environment:
+      CLIENT_ID: '0'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp1_homogeneous_iid_10clients.yaml
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
+      DATA_ROOT: /data
+    volumes:
+    - ./data:/data:ro
+    - ./configs:/app/configs:ro
+    networks:
+    - fl_exp1_net
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2048m
+    restart: 'no'
+  client_01:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_01_exp1_10
+    environment:
+      CLIENT_ID: '1'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp1_homogeneous_iid_10clients.yaml
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
+      DATA_ROOT: /data
+    volumes:
+    - ./data:/data:ro
+    - ./configs:/app/configs:ro
+    networks:
+    - fl_exp1_net
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2048m
+    restart: 'no'
+  client_02:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_02_exp1_10
+    environment:
+      CLIENT_ID: '2'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp1_homogeneous_iid_10clients.yaml
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
+      DATA_ROOT: /data
+    volumes:
+    - ./data:/data:ro
+    - ./configs:/app/configs:ro
+    networks:
+    - fl_exp1_net
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2048m
+    restart: 'no'
+  client_03:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_03_exp1_10
+    environment:
+      CLIENT_ID: '3'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp1_homogeneous_iid_10clients.yaml
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
+      DATA_ROOT: /data
+    volumes:
+    - ./data:/data:ro
+    - ./configs:/app/configs:ro
+    networks:
+    - fl_exp1_net
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2048m
+    restart: 'no'
+  client_04:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_04_exp1_10
+    environment:
+      CLIENT_ID: '4'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp1_homogeneous_iid_10clients.yaml
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
+      DATA_ROOT: /data
+    volumes:
+    - ./data:/data:ro
+    - ./configs:/app/configs:ro
+    networks:
+    - fl_exp1_net
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2048m
+    restart: 'no'
+  client_05:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_05_exp1_10
+    environment:
+      CLIENT_ID: '5'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp1_homogeneous_iid_10clients.yaml
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
+      DATA_ROOT: /data
+    volumes:
+    - ./data:/data:ro
+    - ./configs:/app/configs:ro
+    networks:
+    - fl_exp1_net
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2048m
+    restart: 'no'
+  client_06:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_06_exp1_10
+    environment:
+      CLIENT_ID: '6'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp1_homogeneous_iid_10clients.yaml
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
+      DATA_ROOT: /data
+    volumes:
+    - ./data:/data:ro
+    - ./configs:/app/configs:ro
+    networks:
+    - fl_exp1_net
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2048m
+    restart: 'no'
+  client_07:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_07_exp1_10
+    environment:
+      CLIENT_ID: '7'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp1_homogeneous_iid_10clients.yaml
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
+      DATA_ROOT: /data
+    volumes:
+    - ./data:/data:ro
+    - ./configs:/app/configs:ro
+    networks:
+    - fl_exp1_net
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2048m
+    restart: 'no'
+  client_08:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_08_exp1_10
+    environment:
+      CLIENT_ID: '8'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp1_homogeneous_iid_10clients.yaml
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
+      DATA_ROOT: /data
+    volumes:
+    - ./data:/data:ro
+    - ./configs:/app/configs:ro
+    networks:
+    - fl_exp1_net
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2048m
+    restart: 'no'
+  client_09:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    image: fl_ppo_client:latest
+    container_name: fl_client_09_exp1_10
+    environment:
+      CLIENT_ID: '9'
+      SERVER_ADDR: server:8080
+      CONFIG_PATH: configs/exp1_homogeneous_iid_10clients.yaml
+      PARTITION_FILE: /data/partitions_10_iid_homogeneous.json
+      DATA_ROOT: /data
+    volumes:
+    - ./data:/data:ro
+    - ./configs:/app/configs:ro
+    networks:
+    - fl_exp1_net
+    depends_on:
+    - server
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2048m
+    restart: 'no'
+networks:
+  fl_exp1_net:
+    driver: bridge

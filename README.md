@@ -86,12 +86,17 @@ FL_PPO_PRJ/
 ├── docker/
 │   ├── Dockerfile.base             # Python 3.11 + PyTorch CPU + deps
 │   ├── Dockerfile.server           # server_main.py entrypoint
-│   └── Dockerfile.client           # client_main.py entrypoint
-├── server_main.py                  # gRPC server entrypoint (Docker)
-├── client_main.py                  # gRPC client entrypoint (Docker)
-├── docker-compose.yml              # 1 server + 50 heterogeneous clients
-├── docker-compose.smoke.yml        # 1 server + 3 clients (safe smoke)
-├── docker-compose.grpc_50rounds.yml# 1 server + 3 clients, 50 rounds (gRPC proof)
+│   ├── Dockerfile.client           # client_main.py entrypoint
+│   ├── docker-compose.yml              # 1 server + 50 heterogeneous clients
+│   ├── docker-compose.smoke.yml        # 1 server + 3 clients (safe smoke)
+│   └── docker-compose.grpc_50rounds.yml# 1 server + 3 clients, 50 rounds (gRPC proof)
+├── entrypoints/
+│   ├── server_main.py                  # gRPC server entrypoint (Docker)
+│   └── client_main.py                  # gRPC client entrypoint (Docker)
+├── experiments/
+│   └── exp01_baseline/
+│       ├── config.yaml                 # 10 clients, 50 rounds, Baseline parameters
+│       └── run.sh                      # Launcher for Docker Compose
 ├── RESOURCE_DISTRIBUTION.md        # Client tier specs + memory safety
 └── data/                           # Created by download_and_partition.py
     ├── cifar10/
@@ -186,7 +191,7 @@ python3 src/rl/agent.py --config configs/exp_ppo_adaptive.yaml
 
 ### Build images
 ```bash
-docker compose -f docker-compose.smoke.yml build
+docker compose -f docker/docker-compose.smoke.yml build
 ```
 
 ### Docker smoke test (3 clients, 2 rounds — safe on 22 GB)
@@ -194,22 +199,27 @@ docker compose -f docker-compose.smoke.yml build
 bash scripts/smoke_test_docker.sh
 
 # Or manually:
-docker compose -f docker-compose.smoke.yml up --abort-on-container-exit
-docker compose -f docker-compose.smoke.yml down
+docker compose -f docker/docker-compose.smoke.yml up --abort-on-container-exit
+docker compose -f docker/docker-compose.smoke.yml down
 ```
 
 ### Docker 50-round gRPC validation (3 clients, 50 rounds)
 ```bash
-docker compose -f docker-compose.grpc_50rounds.yml up --build --abort-on-container-exit
-docker compose -f docker-compose.grpc_50rounds.yml down
+docker compose -f docker/docker-compose.grpc_50rounds.yml up --build --abort-on-container-exit
+docker compose -f docker/docker-compose.grpc_50rounds.yml down
 ```
 
 ### Full 50-client experiment (paper scale)
 ```bash
 # ⚠️ Read RESOURCE_DISTRIBUTION.md before running
 # ⚠️ Requires stochastic dropout_mode (set in config)
-docker compose up --abort-on-container-exit 2>&1 | tee outputs/run_50clients.log
-docker compose down
+docker compose -f docker/docker-compose.yml up --abort-on-container-exit 2>&1 | tee outputs/run_50clients.log
+docker compose -f docker/docker-compose.yml down
+```
+
+### Run Experiment 1 (10 clients, 50 rounds)
+```bash
+bash experiments/exp01_baseline/run.sh
 ```
 
 ---

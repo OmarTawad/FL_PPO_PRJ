@@ -41,8 +41,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY src/ /app/src/
 COPY configs/ /app/configs/
 COPY scripts/ /app/scripts/
-COPY server_main.py /app/server_main.py
-COPY client_main.py /app/client_main.py
+COPY entrypoints/ /app/entrypoints/
 
 # ── Environment defaults ──────────────────────────────────────────────────────
 ENV PYTHONUNBUFFERED=1

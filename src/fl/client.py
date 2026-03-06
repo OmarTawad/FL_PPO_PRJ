@@ -10,9 +10,9 @@ Protocol per round:
   4. Client trains locally for cfg.fl.local_epochs epochs
   5. Client returns UPDATED FP32 parameters + metrics dict
 
-HARD GUARD: The FL client always uses 224×224 (use_32=False hardcoded).
-  Paper experiments require 224×224. Smoke tests achieve speed via
-  reduced_fraction (fewer samples), never via lower resolution.
+Resolution path is config-controlled via cfg.data.use_32:
+  - False: 224×224 paper-aligned path (default)
+  - True: native 32×32 lightweight validation path
 
 Metrics returned per round (always included):
   train_loss, train_time_s, quant_bits_requested, quant_method_actual,
@@ -52,7 +52,12 @@ def _make_train_loader(
     data_root: str = "data/",
 ) -> DataLoader:
     """Build a training DataLoader from the client's partition indices."""
-    full_train_ds = get_cifar10_train(root=data_root, download=True, use_32=False)
+    full_train_ds = get_cifar10_train(
+        root=data_root,
+        download=True,
+        use_32=cfg.data.use_32,
+        augment=cfg.data.train_augment,
+    )
     subset = Subset(full_train_ds, train_indices)
     batch_size = cfg.fl.batch_size_for(profile.profile)
     return DataLoader(
@@ -70,7 +75,11 @@ def _make_eval_loader(
     data_root: str = "data/",
 ) -> DataLoader:
     """Build a local evaluation DataLoader from the client's test subset."""
-    full_test_ds = get_cifar10_test(root=data_root, download=True, use_32=False)
+    full_test_ds = get_cifar10_test(
+        root=data_root,
+        download=True,
+        use_32=cfg.data.use_32,
+    )
     subset = Subset(full_test_ds, eval_indices)
     return DataLoader(
         subset,
@@ -87,7 +96,12 @@ def _make_calib_loader(
     data_root: str = "data/",
 ) -> DataLoader:
     """Build a tiny calibration DataLoader for INT8 static quantization."""
-    full_train_ds = get_cifar10_train(root=data_root, download=True, use_32=False)
+    full_train_ds = get_cifar10_train(
+        root=data_root,
+        download=True,
+        use_32=cfg.data.use_32,
+        augment=False,
+    )
     calib_indices = train_indices[:min(n_samples, len(train_indices))]
     subset = Subset(full_train_ds, calib_indices)
     return DataLoader(
@@ -123,7 +137,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.profile = profile
         self.data_root = data_root
         # Server-side model — always FP32; quantized copy trained per round
-        self.model = get_model()
+        self.model = get_model(freeze_features=self.cfg.fl.freeze_features)
 
     # ── Flower interface ───────────────────────────────────────────────────────
 

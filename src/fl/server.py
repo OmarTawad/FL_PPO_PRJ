@@ -146,7 +146,7 @@ def make_server_test_loader(cfg: Config) -> DataLoader:
         server_fraction=0.10,
         seed=cfg.experiment.seed,
         download=True,
-        use_32=False,
+        use_32=cfg.data.use_32,
         num_workers=cfg.fl.num_workers,
         pin_memory=cfg.fl.pin_memory,
     )
@@ -160,7 +160,12 @@ def make_partitions(cfg: Config):
         train_partitions: List[List[int]] — one per client
         eval_partitions:  List[List[int]] — one per client (capped by config)
     """
-    train_ds = get_cifar10_train(root="data/", download=True, use_32=False)
+    train_ds = get_cifar10_train(
+        root="data/",
+        download=True,
+        use_32=cfg.data.use_32,
+        augment=False,
+    )
     data_fractions = [p.data_fraction for p in cfg.clients.profiles]
 
     train_partitions = build_partitions(
@@ -173,7 +178,11 @@ def make_partitions(cfg: Config):
         seed=cfg.experiment.seed,
     )
 
-    test_ds = get_cifar10_test(root="data/", download=False, use_32=False)
+    test_ds = get_cifar10_test(
+        root="data/",
+        download=False,
+        use_32=cfg.data.use_32,
+    )
     n_test = len(test_ds)
     n_per_base = max(1, int(n_test * cfg.data.eval_fraction))
     cap = cfg.data.max_eval_samples_per_client
@@ -272,7 +281,7 @@ def main(config_path: str) -> None:
         log.info(f"  Client {i}: {len(p)} train / {len(eval_partitions[i])} eval samples")
 
     log.info("Initialising global model...")
-    init_model = get_model()
+    init_model = get_model(freeze_features=cfg.fl.freeze_features)
     initial_parameters = ndarrays_to_parameters(get_parameters(init_model))
 
     dropout_tracker = DropoutTracker(n_clients=cfg.clients.count)

@@ -81,7 +81,9 @@ class FedAvgQuant(FedAvg):
         self.output_dir = output_dir
 
         # Server-side global model for evaluation
-        self.global_model = get_model()
+        self.global_model = get_model(
+            freeze_features=self.cfg.fl.freeze_features
+        )
 
         # State reset between env episodes
         self._prev_accuracy: Optional[float] = None

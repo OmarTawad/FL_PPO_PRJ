@@ -22,9 +22,9 @@ import torch
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, transforms
 
-# CIFAR-10 per-channel mean and std (computed over training set)
+# CIFAR-10 per-channel mean and std (paper/common FL baseline values)
 _CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
-_CIFAR10_STD  = (0.2470, 0.2435, 0.2616)
+_CIFAR10_STD  = (0.2023, 0.1994, 0.2010)
 
 # ImageNet stats used when MobileNetV2 pretrained weights are loaded
 # (we use randomly-initialized MobileNetV2, so CIFAR stats are preferred)
@@ -35,7 +35,7 @@ NUM_CLASSES = 10
 DEFAULT_ROOT = os.path.expanduser("~/.cifar10")
 
 
-def get_train_transform(use_32: bool = False) -> transforms.Compose:
+def get_train_transform(use_32: bool = False, augment: bool = True) -> transforms.Compose:
     """
     Return training transforms.
 
@@ -44,18 +44,29 @@ def get_train_transform(use_32: bool = False) -> transforms.Compose:
                 If False (default), resize to 224×224 (paper-aligned).
     """
     if use_32:
-        # Smoke-test mode: native resolution, faster but not paper-aligned
+        if augment:
+            return transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(_CIFAR10_MEAN, _CIFAR10_STD),
+            ])
         return transforms.Compose([
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(_CIFAR10_MEAN, _CIFAR10_STD),
         ])
     # Paper-aligned: MobileNetV2 expects 224×224
+    if augment:
+        return transforms.Compose([
+            transforms.Resize(256),
+            transforms.RandomCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(_CIFAR10_MEAN, _CIFAR10_STD),
+        ])
     return transforms.Compose([
         transforms.Resize(256),
-        transforms.RandomCrop(224),
-        transforms.RandomHorizontalFlip(),
+        transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize(_CIFAR10_MEAN, _CIFAR10_STD),
     ])
@@ -80,6 +91,7 @@ def get_cifar10_train(
     root: str = DEFAULT_ROOT,
     download: bool = False,
     use_32: bool = False,
+    augment: bool = True,
 ) -> datasets.CIFAR10:
     """
     Return raw CIFAR-10 training dataset (50,000 samples).
@@ -93,7 +105,7 @@ def get_cifar10_train(
         root=root,
         train=True,
         download=download,
-        transform=get_train_transform(use_32=use_32),
+        transform=get_train_transform(use_32=use_32, augment=augment),
     )
 
 

@@ -36,8 +36,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY src/ /app/src/
 COPY configs/ /app/configs/
 COPY scripts/ /app/scripts/
-COPY server_main.py /app/server_main.py
-COPY client_main.py /app/client_main.py
+COPY entrypoints/ /app/entrypoints/
 
 # ── Environment ───────────────────────────────────────────────────────────────
 ENV PYTHONUNBUFFERED=1
@@ -50,4 +49,4 @@ ENV CONFIG_PATH=configs/exp_docker_smoke.yaml
 
 EXPOSE 8080
 
-ENTRYPOINT ["python3", "/app/server_main.py"]
+ENTRYPOINT ["python3", "/app/entrypoints/server_main.py"]
