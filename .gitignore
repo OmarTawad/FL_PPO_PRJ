@@ -1,4 +1,5 @@
 *.venv
+*.venv_plot
 *.pyc
 __pycache__
 .env

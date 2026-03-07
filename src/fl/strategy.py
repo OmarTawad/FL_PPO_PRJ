@@ -67,12 +67,15 @@ class FedAvgQuant(FedAvg):
         output_dir: Path,
         initial_parameters: Parameters,
     ):
+        min_round_clients = max(
+            1, min(cfg.fl.min_clients_per_round, cfg.clients.count)
+        )
         super().__init__(
             fraction_fit=1.0,
             fraction_evaluate=1.0,
-            min_fit_clients=cfg.clients.count,
-            min_evaluate_clients=cfg.clients.count,
-            min_available_clients=cfg.clients.count,
+            min_fit_clients=min_round_clients,
+            min_evaluate_clients=min_round_clients,
+            min_available_clients=min_round_clients,
             initial_parameters=initial_parameters,
         )
         self.server_test_loader = server_test_loader
@@ -230,6 +233,7 @@ class FedAvgQuant(FedAvg):
         used_ids: set[int] = set()
         # Use a set to deduplicate dropout clients
         dropout_set: set = set()
+        fit_failures_log: List[Dict[str, Optional[str]]] = []
 
         for client_proxy, fit_res in results:
             proxy_cid = str(client_proxy.cid)
@@ -267,15 +271,41 @@ class FedAvgQuant(FedAvg):
         for f in failures:
             if isinstance(f, tuple) and hasattr(f[0], "cid"):
                 proxy_cid = str(f[0].cid)
+                maybe_metrics = None
+                if isinstance(f[1], FitRes):
+                    maybe_metrics = f[1].metrics
                 cid_int = self._resolve_logical_client_id(
                     proxy_cid=proxy_cid,
-                    metrics=None,
+                    metrics=maybe_metrics,
                     used_ids=used_ids,
                 )
                 used_ids.add(cid_int)
                 failed_ids_int.add(cid_int)
                 dropout_set.add(str(cid_int))
                 self.dropout_tracker.record(cid_int, dropped=True)
+
+                err_type = type(f[1]).__name__
+                err_msg = str(f[1])
+                if isinstance(f[1], FitRes):
+                    err_type = "FitResFailure"
+                    err_msg = "FitRes returned in failures list"
+                fit_failures_log.append(
+                    {
+                        "client_id": str(cid_int),
+                        "stage": "fit",
+                        "error_type": err_type,
+                        "error_message": err_msg[:500],
+                    }
+                )
+            elif isinstance(f, BaseException):
+                fit_failures_log.append(
+                    {
+                        "client_id": None,
+                        "stage": "fit",
+                        "error_type": type(f).__name__,
+                        "error_message": str(f)[:500],
+                    }
+                )
 
         # Record skipped clients
         all_cids = set(range(self.cfg.clients.count))
@@ -338,6 +368,8 @@ class FedAvgQuant(FedAvg):
             "accuracy_delta": accuracy_delta,
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         }
+        if fit_failures_log:
+            round_log["fit_failures"] = fit_failures_log
         log_path = self.output_dir / f"round_{server_round:03d}.json"
         with open(log_path, "w") as f:
             json.dump(round_log, f, indent=2)
