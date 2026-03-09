@@ -51,3 +51,25 @@ Client-level resources for Experiment 2:
 | 9 | `extreme_weak` | 0.25 | 768 MB |
 
 ---
+
+## Experiment 3
+
+Experiment 3 (`exp03_heterogeneous_noniid`) configuration summary:
+
+| Item | Value |
+|------|-------|
+| Number of clients | 10 |
+| Number of rounds | 50 |
+| Time per client (per round, approx.) | 1500s |
+| Data partitioning | Non-IID (Dirichlet alpha=0.1, heterogeneous clients) |
+
+Client-level resources for Experiment 3:
+
+| Client IDs | Profile | CPU limit | Memory limit |
+|------------|---------|-----------|--------------|
+| 0-1 | `strong` | 1.0 | 2560 MB |
+| 2-5 | `medium` | 0.75 | 1536 MB |
+| 6-8 | `weak` | 0.5 | 1024 MB |
+| 9 | `extreme_weak` | 0.25 | 768 MB |
+
+---
