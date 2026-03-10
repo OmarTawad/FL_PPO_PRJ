@@ -73,3 +73,25 @@ Client-level resources for Experiment 3:
 | 9 | `extreme_weak` | 0.25 | 768 MB |
 
 ---
+
+## Experiment 4
+
+Experiment 4 (`exp04_reduced_sampling_iid`) configuration summary:
+
+| Item | Value |
+|------|-------|
+| Number of clients | 10 |
+| Number of rounds | 50 |
+| Avg time per client (per round, approx.) | 700s |
+| Data partitioning | IID (reduced sampling 60%, heterogeneous clients) |
+
+Client-level resources for Experiment 4:
+
+| Client IDs | Profile | CPU limit | Memory limit |
+|------------|---------|-----------|--------------|
+| 0-1 | `strong` | 1.0 | 2560 MB |
+| 2-5 | `medium` | 0.75 | 1536 MB |
+| 6-8 | `weak` | 0.5 | 1024 MB |
+| 9 | `extreme_weak` | 0.25 | 768 MB |
+
+---

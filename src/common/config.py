@@ -38,13 +38,20 @@ class ExperimentConfig:
 @dataclass
 class ClientProfileConfig:
     id: int
-    profile: str                       # strong | medium | weak | extreme_weak
+    profile: str                       # strong | medium | medium_low | weak | extreme_weak | ultra_extreme
     mem_limit_mb: int
     cpu_cores: float
     data_fraction: float = 0.0         # 0.0 = auto-split equally
 
     def __post_init__(self):
-        valid_profiles = ("strong", "medium", "weak", "extreme_weak")
+        valid_profiles = (
+            "strong",
+            "medium",
+            "medium_low",
+            "weak",
+            "extreme_weak",
+            "ultra_extreme",
+        )
         if self.profile not in valid_profiles:
             raise ValueError(f"Client {self.id}: profile must be one of {valid_profiles}, got: {self.profile}")
         if not (0.0 <= self.data_fraction <= 1.0):
@@ -113,8 +120,10 @@ class QuantizationConfig:
 _DEFAULT_BATCH_PER_PROFILE: Dict[str, int] = {
     "strong":       32,
     "medium":       16,
+    "medium_low":   16,
     "weak":          8,
     "extreme_weak":  8,
+    "ultra_extreme": 8,
 }
 
 
