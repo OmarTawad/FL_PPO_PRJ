@@ -178,6 +178,7 @@ def main() -> None:
     cfg = load_config(CONFIG_PATH)
     log.info(f"  Experiment  : {cfg.experiment.name}")
     log.info(f"  Quant mode  : {cfg.quantization.mode}")
+    log.info(f"  Lowp dtype  : {cfg.quantization.lowp_dtype}")
 
     # 2. Load this client's data partition
     train_indices, eval_indices = _load_client_partition(PARTITION_FILE, CLIENT_ID)

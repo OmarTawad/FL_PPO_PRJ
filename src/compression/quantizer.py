@@ -10,7 +10,8 @@ Single entry point for all quantization modes. Called by:
 Usage:
     from src.compression.quantizer import quantize
     model, method = quantize(model, bits=8, calib_loader=loader)
-    # method: "fp32" | "fp16" | "static_int8" | "fp16_fallback" | "fp32_fallback"
+    # method: "fp32" | "fp16" | "bf16" | "static_int8" |
+    #         "fp16_fallback" | "bf16_fallback" | "fp32_fallback"
 
 Return value contract:
     model  — a COPY of the input model at the requested precision
@@ -26,8 +27,11 @@ from typing import Optional, Tuple
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from src.compression import fp32, fp16
-from src.compression.int8 import try_static_int8, QUANT_UNSUPPORTED
+from src.compression import fp32, fp16, bf16
+from src.compression.int8 import try_static_int8
+from src.compression.lowp import (
+    resolve_lowp_dtype,
+)
 
 log = logging.getLogger(__name__)
 
@@ -37,8 +41,10 @@ VALID_BITS = (32, 16, 8)
 # Method strings written to per-round JSON
 METHOD_FP32           = "fp32"
 METHOD_FP16           = "fp16"
+METHOD_BF16           = "bf16"
 METHOD_STATIC_INT8    = "static_int8"
 METHOD_FP16_FALLBACK  = "fp16_fallback"
+METHOD_BF16_FALLBACK  = "bf16_fallback"
 METHOD_FP32_FALLBACK  = "fp32_fallback"
 
 
@@ -48,6 +54,7 @@ def quantize(
     calib_loader: Optional[DataLoader] = None,
     calibration_samples: int = 128,
     backend: str = "qnnpack",
+    lowp_dtype: str = "bf16",
 ) -> Tuple[nn.Module, str]:
     """
     Apply quantization to a model and return (quantized_model, method_string).
@@ -61,7 +68,7 @@ def quantize(
 
     Returns:
         (quantized_model, method) — model is a deep copy; method is one of
-        {fp32, fp16, static_int8, fp16_fallback, fp32_fallback}.
+        {fp32, fp16, bf16, static_int8, fp16_fallback, bf16_fallback, fp32_fallback}.
 
     Raises:
         ValueError: If bits not in {32, 16, 8}.
@@ -74,6 +81,9 @@ def quantize(
         return fp32.apply(model, inplace=False), METHOD_FP32
 
     if bits == 16:
+        resolved = resolve_lowp_dtype(lowp_dtype)
+        if resolved == "bf16":
+            return bf16.apply(model, inplace=False), METHOD_BF16
         return fp16.apply(model, inplace=False), METHOD_FP16
 
     # bits == 8: attempt static INT8
@@ -88,6 +98,7 @@ def quantize(
         calibration_samples=calibration_samples,
         backend=backend,
         inplace=False,
+        lowp_dtype=lowp_dtype,
     )
 
 
@@ -96,6 +107,7 @@ def quantize_action(
     action: int,
     calib_loader: Optional[DataLoader] = None,
     calibration_samples: int = 128,
+    lowp_dtype: str = "bf16",
 ) -> Tuple[nn.Module, str]:
     """
     Convenience wrapper: convert PPO action integer to bits and call quantize().
@@ -103,7 +115,7 @@ def quantize_action(
     PPO action encoding (SPEC.md §3.2):
         0 → skip (caller should not call quantize; raises if called)
         1 → fp32 (32 bits)
-        2 → fp16 (16 bits)
+        2 → lowp 16-bit (dtype from lowp_dtype)
         3 → int8  (8 bits — requires calib_loader)
 
     Args:
@@ -125,4 +137,5 @@ def quantize_action(
         raise ValueError(f"action must be 0/1/2/3, got: {action}")
     bits = _ACTION_TO_BITS[action]
     return quantize(model, bits=bits, calib_loader=calib_loader,
-                    calibration_samples=calibration_samples)
+                    calibration_samples=calibration_samples,
+                    lowp_dtype=lowp_dtype)

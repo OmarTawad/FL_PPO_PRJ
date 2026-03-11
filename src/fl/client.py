@@ -35,12 +35,24 @@ from src.common.config import Config, ClientProfileConfig
 from src.models.mobilenetv2 import get_model, get_parameters, set_parameters
 from src.models.trainer import train_local, evaluate, build_optimizer
 from src.data.cifar import get_cifar10_train, get_cifar10_test
+from src.compression.lowp import precision_from_quant_method, resolve_lowp_dtype
 from src.compression.quantizer import quantize
 
 log = logging.getLogger(__name__)
 
 # CPU device — this project runs CPU-only
 _DEVICE = torch.device("cpu")
+
+
+def _requested_precision_label(quant_bits: int, lowp_dtype: str) -> str:
+    """Canonical requested precision label for reporting."""
+    if quant_bits == 32:
+        return "fp32"
+    if quant_bits == 16:
+        return resolve_lowp_dtype(lowp_dtype)
+    if quant_bits == 8:
+        return "int8"
+    return "unknown"
 
 
 # ─── Data helpers ─────────────────────────────────────────────────────────────
@@ -141,6 +153,10 @@ class FlowerClient(fl.client.NumPyClient):
 
     # ── Flower interface ───────────────────────────────────────────────────────
 
+    def get_properties(self, config: Dict[str, Scalar]) -> Dict[str, Scalar]:
+        """Expose logical client identity for strategy-side UUID mapping."""
+        return {"client_id": str(self.client_id)}
+
     def get_parameters(self, config: Dict[str, Scalar]) -> NDArrays:
         """Return current model parameters as a list of FP32 numpy arrays."""
         return get_parameters(self.model)
@@ -163,9 +179,15 @@ class FlowerClient(fl.client.NumPyClient):
         # 2. Extract server-side config
         quant_bits = int(config.get("quant_bits", 32))
         fl_round = int(config.get("round", 0))
+        if self.cfg.quantization.mode == "mixed" and self.cfg.quantization.per_client:
+            quant_bits = int(self.cfg.quantization.per_client.get(self.client_id, quant_bits))
+        requested_precision = _requested_precision_label(
+            quant_bits, self.cfg.quantization.lowp_dtype
+        )
         log.info(
             f"[Client {self.client_id}] round={fl_round} "
-            f"quant_bits={quant_bits} n_train={len(self.train_indices)}"
+            f"quant_bits={quant_bits} requested_precision={requested_precision} "
+            f"n_train={len(self.train_indices)}"
         )
 
         # 3. Build calibration loader if INT8 requested
@@ -183,6 +205,7 @@ class FlowerClient(fl.client.NumPyClient):
             bits=quant_bits,
             calib_loader=calib_loader,
             calibration_samples=self.cfg.quantization.calibration_samples,
+            lowp_dtype=self.cfg.quantization.lowp_dtype,
         )
 
         # 5. Build train loader
@@ -202,24 +225,65 @@ class FlowerClient(fl.client.NumPyClient):
 
         # 7. Train locally — returns List[TrainResult], one per epoch
         t0 = time.time()
-        train_results = train_local(
-            q_model,
-            train_loader,
-            optimizer=optimizer,
-            epochs=self.cfg.fl.local_epochs,
-            device=_DEVICE,
-            grad_clip_norm=1.0,
-        )
+        try:
+            train_results = train_local(
+                q_model,
+                train_loader,
+                optimizer=optimizer,
+                epochs=self.cfg.fl.local_epochs,
+                device=_DEVICE,
+                grad_clip_norm=1.0,
+            )
+        except RuntimeError as err:
+            # Some CPU kernels can reject BF16 for specific ops. Fallback is explicit.
+            if (
+                requested_precision == "bf16"
+                and ("bfloat16" in str(err).lower() or "bf16" in str(err).lower())
+            ):
+                log.warning(
+                    f"[Client {self.client_id}] BF16 runtime unsupported in round={fl_round} "
+                    f"({type(err).__name__}: {err}). Retrying in FP32."
+                )
+                q_model, quant_method = quantize(
+                    self.model,
+                    bits=32,
+                    calibration_samples=self.cfg.quantization.calibration_samples,
+                    lowp_dtype=self.cfg.quantization.lowp_dtype,
+                )
+                optimizer = build_optimizer(
+                    q_model,
+                    optimizer_name=self.cfg.fl.optimizer,
+                    lr=self.cfg.fl.lr,
+                    momentum=self.cfg.fl.momentum,
+                    weight_decay=self.cfg.fl.weight_decay,
+                )
+                train_results = train_local(
+                    q_model,
+                    train_loader,
+                    optimizer=optimizer,
+                    epochs=self.cfg.fl.local_epochs,
+                    device=_DEVICE,
+                    grad_clip_norm=1.0,
+                )
+                quant_method = "fp32_fallback"
+            else:
+                raise
         train_time = time.time() - t0
 
         # Final epoch result (or the OOM result if it happened mid-training)
         result = train_results[-1]
         dropped = result.oom
+        actual_precision = precision_from_quant_method(quant_method)
+        if actual_precision == "unknown":
+            actual_precision = _requested_precision_label(
+                quant_bits, self.cfg.quantization.lowp_dtype
+            )
 
         if dropped:
             log.warning(
                 f"[Client {self.client_id}] OOM during training "
-                f"(quant={quant_method}) — returning unmodified global weights"
+                f"(requested={requested_precision}, actual={quant_method}) "
+                f"— returning unmodified global weights"
             )
             return (
                 get_parameters(self.model),
@@ -228,6 +292,8 @@ class FlowerClient(fl.client.NumPyClient):
                     "train_loss": -1.0,  # sentinel for NaN (Flower Scalar must be float)
                     "train_time_s": float(train_time),
                     "quant_bits_requested": quant_bits,
+                    "quant_precision_requested": requested_precision,
+                    "quant_precision_actual": actual_precision,
                     "quant_method_actual": quant_method,
                     "n_samples": len(self.train_indices),
                     "dropped": 1,
@@ -248,6 +314,8 @@ class FlowerClient(fl.client.NumPyClient):
             "train_loss": float(final_loss),
             "train_time_s": float(train_time),
             "quant_bits_requested": quant_bits,
+            "quant_precision_requested": requested_precision,
+            "quant_precision_actual": actual_precision,
             "quant_method_actual": quant_method,
             "n_samples": len(self.train_indices),
             "dropped": 0,
@@ -256,7 +324,7 @@ class FlowerClient(fl.client.NumPyClient):
 
         log.info(
             f"[Client {self.client_id}] fit done: loss={final_loss:.4f} "
-            f"time={train_time:.1f}s quant={quant_method}"
+            f"time={train_time:.1f}s requested={requested_precision} actual={quant_method}"
         )
         return updated_params, len(self.train_indices), metrics
 

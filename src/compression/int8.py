@@ -6,8 +6,8 @@ Paper: Adaptive FL with PPO-based Client and Quantization Selection
 Pipeline: fuse → prepare (insert observers) → calibrate (128 samples) → convert → verify_inference
 
 Fallback chain (NEVER silent):
-    static INT8 fails  →  log QUANT_UNSUPPORTED  →  return FP16 model
-    FP16 also fails    →  log QUANT_UNSUPPORTED  →  return FP32 model
+    static INT8 fails  →  log QUANT_UNSUPPORTED  →  return lowp_dtype model
+    lowp also fails    →  log QUANT_UNSUPPORTED  →  return FP32 model
 
 Dynamic INT8 (quantize_dynamic) is NEVER used as a fallback (SPEC.md §4.2).
 
@@ -19,7 +19,7 @@ Backend auto-selection (SPEC.md §4.2):
 Usage:
     from src.compression.int8 import try_static_int8, QUANT_UNSUPPORTED
     model, method = try_static_int8(model, calib_loader)
-    # method in {"static_int8", "fp16_fallback", "fp32_fallback"}
+    # method in {"static_int8", "bf16_fallback", "fp16_fallback", "fp32_fallback"}
 """
 
 from __future__ import annotations
@@ -31,7 +31,12 @@ from typing import List, Optional, Tuple
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from src.compression import fp16 as _fp16_module  # used for fallback chain
+from src.compression import fp16 as _fp16_module
+from src.compression import bf16 as _bf16_module
+from src.compression.lowp import (
+    fallback_method_for_lowp_dtype,
+    resolve_lowp_dtype,
+)
 
 # Log key emitted on every fallback (SPEC.md §4.2)
 QUANT_UNSUPPORTED = "QUANT_UNSUPPORTED"
@@ -214,6 +219,7 @@ def try_static_int8(
     calibration_samples: int = 128,
     backend: Optional[str] = None,
     inplace: bool = False,
+    lowp_dtype: str = "bf16",
 ) -> Tuple[nn.Module, str]:
     """
     Attempt static INT8 quantization with full fallback chain.
@@ -235,7 +241,7 @@ def try_static_int8(
 
     On any failure in steps 4–8:
         → logs QUANT_UNSUPPORTED with error detail
-        → falls back to FP16, then FP32 if FP16 also fails
+        → falls back to lowp_dtype (bf16/fp16), then FP32 if lowp also fails
 
     Args:
         model: Source FP32 model (eval or train mode).
@@ -247,9 +253,14 @@ def try_static_int8(
     Returns:
         Tuple (quantized_model, method_string) where method_string is one of:
             "static_int8"    — full static INT8 conversion succeeded
+            "bf16_fallback"  — INT8 failed; returned BF16 model
             "fp16_fallback"  — INT8 failed; returned FP16 model
-            "fp32_fallback"  — INT8 + FP16 failed; returned FP32 model
+            "fp32_fallback"  — INT8 + lowp failed; returned FP32 model
     """
+    resolved_lowp = resolve_lowp_dtype(lowp_dtype)
+    lowp_apply = _bf16_module.apply if resolved_lowp == "bf16" else _fp16_module.apply
+    lowp_method = fallback_method_for_lowp_dtype(resolved_lowp)
+
     # Step 1: Log supported engines
     _log_supported_engines()
 
@@ -263,16 +274,19 @@ def try_static_int8(
             log.warning(
                 f"{QUANT_UNSUPPORTED}: no working INT8 backend found in "
                 f"{list(torch.backends.quantized.supported_engines)}. "
-                f"int8_disabled=true. Triggering FP16 fallback."
+                f"int8_disabled=true. Triggering {resolved_lowp.upper()} fallback."
             )
             try:
-                fp16_model = _fp16_module.apply(model, inplace=False)
-                log.info("Fallback to FP16 successful → quant_method=fp16_fallback")
-                return fp16_model, "fp16_fallback"
-            except Exception as fp16_err:
+                lowp_model = lowp_apply(model, inplace=False)
+                log.info(
+                    f"Fallback to {resolved_lowp.upper()} successful "
+                    f"→ quant_method={lowp_method}"
+                )
+                return lowp_model, lowp_method
+            except Exception as lowp_err:
                 log.warning(
-                    f"{QUANT_UNSUPPORTED}: FP16 fallback also failed "
-                    f"({type(fp16_err).__name__}). Falling back to FP32. "
+                    f"{QUANT_UNSUPPORTED}: {resolved_lowp.upper()} fallback also failed "
+                    f"({type(lowp_err).__name__}). Falling back to FP32. "
                     f"quant_method=fp32_fallback"
                 )
                 return copy.deepcopy(model).float().eval(), "fp32_fallback"
@@ -313,17 +327,21 @@ def try_static_int8(
     except Exception as int8_err:
         log.warning(
             f"{QUANT_UNSUPPORTED}: static INT8 failed ({type(int8_err).__name__}: {int8_err}). "
-            f"Falling back to FP16. int8_disabled=true"
+            f"Falling back to {resolved_lowp.upper()}. int8_disabled=true"
         )
-        # FP16 fallback — using fp16.apply() so it can be intercepted in tests
+        # lowp fallback — using lowp module apply() so it can be intercepted in tests
         try:
-            fp16_model = _fp16_module.apply(model, inplace=False)
-            log.info("Fallback to FP16 successful → quant_method=fp16_fallback")
-            return fp16_model, "fp16_fallback"
+            lowp_model = lowp_apply(model, inplace=False)
+            log.info(
+                f"Fallback to {resolved_lowp.upper()} successful "
+                f"→ quant_method={lowp_method}"
+            )
+            return lowp_model, lowp_method
 
-        except Exception as fp16_err:
+        except Exception as lowp_err:
             log.warning(
-                f"{QUANT_UNSUPPORTED}: FP16 fallback also failed ({type(fp16_err).__name__}: {fp16_err}). "
+                f"{QUANT_UNSUPPORTED}: {resolved_lowp.upper()} fallback also failed "
+                f"({type(lowp_err).__name__}: {lowp_err}). "
                 f"Falling back to FP32. quant_method=fp32_fallback"
             )
             fp32_model = copy.deepcopy(model).float().eval()

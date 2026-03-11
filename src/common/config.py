@@ -100,6 +100,7 @@ class DataConfig:
 class QuantizationConfig:
     mode: str = "adaptive"             # adaptive | fixed_fp32 | fixed_fp16 | fixed_int8 | mixed
     fixed_bits: int = 32               # used only if mode=fixed_*
+    lowp_dtype: str = "bf16"           # dtype used when bits=16: bf16 | fp16
     calibration_samples: int = 128
     per_client: Optional[Dict[int, int]] = None   # used if mode=mixed
 
@@ -110,6 +111,11 @@ class QuantizationConfig:
         # Fix H: only validate fixed_bits when mode explicitly uses it
         if self.mode.startswith("fixed_") and self.fixed_bits not in (32, 16, 8):
             raise ValueError(f"fixed_bits must be 32, 16, or 8 (for fixed_* modes), got: {self.fixed_bits}")
+        self.lowp_dtype = str(self.lowp_dtype).strip().lower()
+        if self.lowp_dtype not in ("bf16", "fp16"):
+            raise ValueError(
+                f"quantization.lowp_dtype must be 'bf16' or 'fp16', got: {self.lowp_dtype}"
+            )
         if self.mode == "mixed" and self.per_client is None:
             raise ValueError("quantization.mode=mixed requires per_client mapping")
         # NOTE: No dynamic INT8 fallback. Fallback chain: static_int8 -> FP16 -> FP32,
@@ -267,6 +273,7 @@ def _parse_quant(raw: dict) -> QuantizationConfig:
     return QuantizationConfig(
         mode=str(raw.get("mode", "adaptive")),
         fixed_bits=int(raw.get("fixed_bits", 32)),
+        lowp_dtype=str(raw.get("lowp_dtype", "bf16")),
         calibration_samples=int(raw.get("calibration_samples", 128)),
         per_client=per_client,
     )
@@ -376,6 +383,7 @@ if __name__ == "__main__":
         print(f"     action_nv:  {cfg.action_nvec}")
         print(f"     rounds:     {cfg.experiment.rounds}")
         print(f"     quant mode: {cfg.quantization.mode}")
+        print(f"     lowp dtype: {cfg.quantization.lowp_dtype}")
         print(f"     batch (weak): {cfg.fl.batch_size_for('weak')}")
         print(f"     num_workers:  {cfg.fl.num_workers}")
         sys.exit(0)

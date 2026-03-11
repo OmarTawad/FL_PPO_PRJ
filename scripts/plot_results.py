@@ -59,8 +59,10 @@ COLOURS = {
     "reward":     "#4CAF50",   # green — PPO reward
     "fp32":       "#4CAF50",   # green
     "fp16":       "#2196F3",   # blue
+    "bf16":       "#00ACC1",   # cyan
     "static_int8": "#FF9800",  # amber
     "fp16_fallback": "#9C27B0",  # purple
+    "bf16_fallback": "#7E57C2",  # deep purple
     "fp32_fallback": "#F44336",  # red
     "other":      "#9E9E9E",   # grey
 }
@@ -68,8 +70,10 @@ COLOURS = {
 QUANT_LABELS = {
     "fp32":           "FP32",
     "fp16":           "FP16",
+    "bf16":           "BF16",
     "static_int8":    "INT8 (static)",
     "fp16_fallback":  "FP16 (fallback)",
+    "bf16_fallback":  "BF16 (fallback)",
     "fp32_fallback":  "FP32 (fallback)",
 }
 
@@ -200,7 +204,16 @@ def plot_dropout(logs: List[dict], out_path: Path, show: bool = False) -> None:
 
 def plot_quant_distribution(logs: List[dict], out_path: Path, show: bool = False) -> None:
     """Stacked bar chart of quantization methods per round."""
-    all_methods = ["fp32", "fp16", "static_int8", "fp16_fallback", "fp32_fallback"]
+    all_methods = [
+        "fp32",
+        "fp16",
+        "bf16",
+        "static_int8",
+        "fp16_fallback",
+        "bf16_fallback",
+        "fp32_fallback",
+        "other",
+    ]
     rounds = [_safe_get(d, "round", i + 1) for i, d in enumerate(logs)]
 
     # Count occurrences of each quant method per round
@@ -213,7 +226,7 @@ def plot_quant_distribution(logs: List[dict], out_path: Path, show: bool = False
                 if isinstance(method, str) and method in counts:
                     counts[method] += 1
                 else:
-                    counts["fp32"] = counts.get("fp32", 0) + 1  # default
+                    counts["other"] = counts.get("other", 0) + 1
         for m in all_methods:
             method_counts[m].append(counts[m])
 

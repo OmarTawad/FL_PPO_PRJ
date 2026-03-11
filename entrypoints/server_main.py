@@ -213,6 +213,7 @@ def main() -> None:
     log.info(f"  Rounds      : {n_rounds}")
     log.info(f"  Clients     : {cfg.n_clients}")
     log.info(f"  Quant mode  : {cfg.quantization.mode}")
+    log.info(f"  Lowp dtype  : {cfg.quantization.lowp_dtype}")
 
     # 2. Verify partition file exists
     _load_partition_file(PARTITION_FILE)  # validates file exists; clients read it
