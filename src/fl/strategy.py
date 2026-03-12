@@ -46,6 +46,10 @@ from src.common.config import Config
 from src.models.mobilenetv2 import get_model, set_parameters, get_parameters
 from src.models.trainer import evaluate
 from src.compression.lowp import precision_from_quant_method
+from src.compression.transport_int8 import (
+    decode_transport_meta_json,
+    dequantize_delta_int8_per_tensor,
+)
 from src.heterogeneity.dropout import DropoutTracker
 
 log = logging.getLogger(__name__)
@@ -278,14 +282,27 @@ class FedAvgQuant(FedAvg):
             self.last_round_log = {}
             return None, {}
 
-        # 1. FedAvg aggregation
-        aggregated_params, _ = super().aggregate_fit(server_round, results, failures)
-        if aggregated_params is None:
-            self.last_round_log = {}
-            return None, {}
+        transport_decode_success_by_proxy: Dict[str, int] = {}
+        transport_decode_error_by_proxy: Dict[str, str] = {}
+        transport_agg_input_dtype_by_proxy: Dict[str, str] = {}
+
+        # 1. Aggregate updates
+        if self.cfg.quantization.transport_mode == "delta":
+            (
+                aggregated_params,
+                params_ndarrays,
+                transport_decode_success_by_proxy,
+                transport_decode_error_by_proxy,
+                transport_agg_input_dtype_by_proxy,
+            ) = self._aggregate_fit_delta(results)
+        else:
+            aggregated_params, _ = super().aggregate_fit(server_round, results, failures)
+            if aggregated_params is None:
+                self.last_round_log = {}
+                return None, {}
+            params_ndarrays = parameters_to_ndarrays(aggregated_params)
 
         # Keep BN running statistics/counters from previous global state when disabled.
-        params_ndarrays = parameters_to_ndarrays(aggregated_params)
         if not self.cfg.fl.aggregate_bn_buffers:
             if len(params_ndarrays) == len(self._state_keys) == len(self._global_params_nd):
                 for idx, name in enumerate(self._state_keys):
@@ -308,6 +325,29 @@ class FedAvgQuant(FedAvg):
         actual_quant_methods: Dict[str, str] = {}
         quant_precision_requested: Dict[str, str] = {}
         quant_precision_actual: Dict[str, str] = {}
+        training_precision_requested: Dict[str, str] = {}
+        training_precision_actual: Dict[str, str] = {}
+        training_method_actual: Dict[str, str] = {}
+        quant_fallback_reason: Dict[str, str] = {}
+        qat_enabled: Dict[str, int] = {}
+        qat_backend_used: Dict[str, str] = {}
+        qat_scope_used: Dict[str, str] = {}
+        qat_convert_attempted: Dict[str, int] = {}
+        qat_convert_success: Dict[str, int] = {}
+        qat_convert_error: Dict[str, str] = {}
+        qat_convert_probe_policy: Dict[str, str] = {}
+        int8_convert_attempted: Dict[str, int] = {}
+        int8_convert_success: Dict[str, int] = {}
+        int8_convert_error: Dict[str, str] = {}
+        int8_inference_check_success: Dict[str, int] = {}
+        posttrain_inference_method_actual: Dict[str, str] = {}
+        transport_dtype_requested: Dict[str, str] = {}
+        transport_dtype_actual: Dict[str, str] = {}
+        transport_payload_kind: Dict[str, str] = {}
+        decode_success: Dict[str, int] = {}
+        decode_error: Dict[str, str] = {}
+        aggregation_input_dtype_after_decode: Dict[str, str] = {}
+        transport_tensor_count: Dict[str, int] = {}
         train_losses: List[float] = []
         selected_ids_int: set[int] = set()
         failed_ids_int: set[int] = set()
@@ -350,12 +390,102 @@ class FedAvgQuant(FedAvg):
                     actual_precision = "fp32"
             else:
                 actual_precision = str(actual_precision_raw)
+            train_precision_req_raw = m.get("training_precision_requested")
+            if train_precision_req_raw is None:
+                train_precision_req = requested_precision
+            else:
+                train_precision_req = str(train_precision_req_raw)
+            train_precision_act_raw = m.get("training_precision_actual")
+            if train_precision_act_raw is None:
+                train_precision_act = actual_precision
+            else:
+                train_precision_act = str(train_precision_act_raw)
+            train_method_raw = m.get("training_method_actual")
+            if train_method_raw is None:
+                train_method = method
+            else:
+                train_method = str(train_method_raw)
+            fallback_reason = str(m.get("quant_fallback_reason", "")).strip()
+            qat_enabled_val = int(m.get("qat_enabled", 0))
+            qat_backend_used_val = str(m.get("qat_backend_used", "")).strip()
+            qat_scope_used_val = str(m.get("qat_scope_used", "")).strip()
+            qat_convert_attempted_val = int(m.get("qat_convert_attempted", 0))
+            qat_convert_success_val = int(m.get("qat_convert_success", 0))
+            qat_convert_error_val = str(m.get("qat_convert_error", "")).strip()
+            qat_convert_probe_policy_val = str(
+                m.get("qat_convert_probe_policy", "")
+            ).strip()
+            int8_convert_attempted_val = int(m.get("int8_convert_attempted", 0))
+            int8_convert_success_val = int(m.get("int8_convert_success", 0))
+            int8_convert_error_val = str(m.get("int8_convert_error", "")).strip()
+            int8_inference_check_success_val = int(
+                m.get("int8_inference_check_success", 0)
+            )
+            posttrain_method_val = str(
+                m.get("posttrain_inference_method_actual", "")
+            ).strip()
+            transport_requested_val = str(
+                m.get("transport_dtype_requested", "fp32")
+            ).strip().lower()
+            transport_actual_val = str(
+                m.get("transport_dtype_actual", transport_requested_val)
+            ).strip().lower()
+            transport_payload_kind_val = str(
+                m.get("transport_payload_kind", "model_fp32")
+            ).strip()
+            transport_tensor_count_val = int(m.get("transport_tensor_count", 0))
+            decode_success_val = int(
+                transport_decode_success_by_proxy.get(
+                    proxy_cid,
+                    1 if self.cfg.quantization.transport_mode != "delta" else 0,
+                )
+            )
+            decode_error_val = str(
+                transport_decode_error_by_proxy.get(proxy_cid, "")
+            ).strip()
+            agg_input_dtype_val = str(
+                transport_agg_input_dtype_by_proxy.get(
+                    proxy_cid,
+                    "fp32" if self.cfg.quantization.transport_mode != "delta" else "unknown",
+                )
+            ).strip()
             dropped = int(m.get("dropped", 0))
 
             quant_assignments[cid] = bits
             actual_quant_methods[cid] = method
             quant_precision_requested[cid] = requested_precision
             quant_precision_actual[cid] = actual_precision
+            training_precision_requested[cid] = train_precision_req
+            training_precision_actual[cid] = train_precision_act
+            training_method_actual[cid] = train_method
+            if fallback_reason:
+                quant_fallback_reason[cid] = fallback_reason
+            qat_enabled[cid] = qat_enabled_val
+            if qat_backend_used_val:
+                qat_backend_used[cid] = qat_backend_used_val
+            if qat_scope_used_val:
+                qat_scope_used[cid] = qat_scope_used_val
+            qat_convert_attempted[cid] = qat_convert_attempted_val
+            qat_convert_success[cid] = qat_convert_success_val
+            if qat_convert_error_val:
+                qat_convert_error[cid] = qat_convert_error_val
+            if qat_convert_probe_policy_val:
+                qat_convert_probe_policy[cid] = qat_convert_probe_policy_val
+            int8_convert_attempted[cid] = int8_convert_attempted_val
+            int8_convert_success[cid] = int8_convert_success_val
+            if int8_convert_error_val:
+                int8_convert_error[cid] = int8_convert_error_val
+            int8_inference_check_success[cid] = int8_inference_check_success_val
+            if posttrain_method_val:
+                posttrain_inference_method_actual[cid] = posttrain_method_val
+            transport_dtype_requested[cid] = transport_requested_val
+            transport_dtype_actual[cid] = transport_actual_val
+            transport_payload_kind[cid] = transport_payload_kind_val
+            transport_tensor_count[cid] = transport_tensor_count_val
+            decode_success[cid] = decode_success_val
+            aggregation_input_dtype_after_decode[cid] = agg_input_dtype_val
+            if decode_error_val:
+                decode_error[cid] = decode_error_val
 
             loss_val = m.get("train_loss")
             if (loss_val is not None
@@ -474,6 +604,29 @@ class FedAvgQuant(FedAvg):
             "actual_quant_method": actual_quant_methods,
             "quant_precision_requested": quant_precision_requested,
             "quant_precision_actual": quant_precision_actual,
+            "training_precision_requested": training_precision_requested,
+            "training_precision_actual": training_precision_actual,
+            "training_method_actual": training_method_actual,
+            "quant_fallback_reason": quant_fallback_reason,
+            "qat_enabled": qat_enabled,
+            "qat_backend_used": qat_backend_used,
+            "qat_scope_used": qat_scope_used,
+            "qat_convert_attempted": qat_convert_attempted,
+            "qat_convert_success": qat_convert_success,
+            "qat_convert_error": qat_convert_error,
+            "qat_convert_probe_policy": qat_convert_probe_policy,
+            "int8_convert_attempted": int8_convert_attempted,
+            "int8_convert_success": int8_convert_success,
+            "int8_convert_error": int8_convert_error,
+            "int8_inference_check_success": int8_inference_check_success,
+            "posttrain_inference_method_actual": posttrain_inference_method_actual,
+            "transport_dtype_requested": transport_dtype_requested,
+            "transport_dtype_actual": transport_dtype_actual,
+            "transport_payload_kind": transport_payload_kind,
+            "transport_tensor_count": transport_tensor_count,
+            "decode_success": decode_success,
+            "decode_error": decode_error,
+            "aggregation_input_dtype_after_decode": aggregation_input_dtype_after_decode,
             "dropout_clients": dropout_client_ids,
             "dropout_fraction": dropout_fraction,
             "mean_train_loss": mean_loss,
@@ -526,6 +679,128 @@ class FedAvgQuant(FedAvg):
         return super().aggregate_evaluate(server_round, results, failures)
 
     # ── Internal helpers ───────────────────────────────────────────────────────
+
+    def _aggregate_fit_delta(
+        self,
+        results: List[Tuple[ClientProxy, FitRes]],
+    ) -> Tuple[
+        Parameters,
+        NDArrays,
+        Dict[str, int],
+        Dict[str, str],
+        Dict[str, str],
+    ]:
+        """
+        Aggregate client delta payloads into updated FP32 global parameters.
+
+        Delta payload contract:
+          - FP32 transport: fit_res.parameters contains FP32 delta tensors.
+          - INT8 transport: fit_res.parameters contains INT8 tensors and
+            transport metadata in metrics["transport_quant_meta_json"].
+        """
+        base_params = [arr.astype(np.float32, copy=True) for arr in self._global_params_nd]
+        weighted_sum: Optional[List[np.ndarray]] = None
+        total_weight = 0
+
+        decode_success_by_proxy: Dict[str, int] = {}
+        decode_error_by_proxy: Dict[str, str] = {}
+        agg_input_dtype_by_proxy: Dict[str, str] = {}
+
+        for client_proxy, fit_res in results:
+            proxy_cid = str(client_proxy.cid)
+            metrics = fit_res.metrics or {}
+            requested_dtype = str(
+                metrics.get("transport_dtype_requested", "fp32")
+            ).strip().lower()
+            actual_dtype = str(
+                metrics.get("transport_dtype_actual", requested_dtype)
+            ).strip().lower()
+            meta_json = str(metrics.get("transport_quant_meta_json", ""))
+            payload = parameters_to_ndarrays(fit_res.parameters)
+
+            decode_ok = True
+            decode_err = ""
+            agg_input_dtype = "fp32"
+            reconstructed: List[np.ndarray] = []
+
+            try:
+                if len(payload) != len(base_params):
+                    raise ValueError(
+                        f"transport_tensor_count_mismatch:{len(payload)}!={len(base_params)}"
+                    )
+                if actual_dtype == "int8":
+                    meta = decode_transport_meta_json(meta_json)
+                    delta_fp32 = dequantize_delta_int8_per_tensor(payload, meta)
+                else:
+                    delta_fp32 = [
+                        np.asarray(arr, dtype=np.float32).astype(np.float32, copy=False)
+                        for arr in payload
+                    ]
+
+                if len(delta_fp32) != len(base_params):
+                    raise ValueError(
+                        f"decoded_tensor_count_mismatch:{len(delta_fp32)}!={len(base_params)}"
+                    )
+
+                reconstructed = [
+                    (base + delta).astype(np.float32, copy=False)
+                    for base, delta in zip(base_params, delta_fp32)
+                ]
+            except Exception as err:
+                decode_ok = False
+                decode_err = f"{type(err).__name__}:{str(err)[:400]}"
+                agg_input_dtype = "decode_failed"
+
+            decode_success_by_proxy[proxy_cid] = int(decode_ok)
+            agg_input_dtype_by_proxy[proxy_cid] = agg_input_dtype
+            if decode_err:
+                decode_error_by_proxy[proxy_cid] = decode_err
+
+            if not decode_ok:
+                log.warning(
+                    "[Strategy] round delta decode failed for proxy=%s (%s)",
+                    proxy_cid,
+                    decode_err,
+                )
+                if self.cfg.quantization.transport_require_decode_success:
+                    continue
+                # Best-effort fallback: treat payload as FP32 deltas.
+                if len(payload) != len(base_params):
+                    continue
+                reconstructed = [
+                    (base + np.asarray(arr, dtype=np.float32)).astype(np.float32, copy=False)
+                    for base, arr in zip(base_params, payload)
+                ]
+                agg_input_dtype_by_proxy[proxy_cid] = "fp32_fallback_from_decode_error"
+
+            weight = max(1, int(fit_res.num_examples))
+            total_weight += weight
+            if weighted_sum is None:
+                weighted_sum = [arr * weight for arr in reconstructed]
+            else:
+                for i, arr in enumerate(reconstructed):
+                    weighted_sum[i] += arr * weight
+
+        if weighted_sum is None or total_weight <= 0:
+            log.warning(
+                "[Strategy] round delta aggregation had no decodable client updates; "
+                "keeping previous global model."
+            )
+            aggregated_nd = [arr.copy() for arr in base_params]
+        else:
+            aggregated_nd = [
+                (arr / float(total_weight)).astype(np.float32, copy=False)
+                for arr in weighted_sum
+            ]
+
+        aggregated_params = ndarrays_to_parameters(aggregated_nd)
+        return (
+            aggregated_params,
+            aggregated_nd,
+            decode_success_by_proxy,
+            decode_error_by_proxy,
+            agg_input_dtype_by_proxy,
+        )
 
     def _get_quant_bits(self, server_round: int) -> int:
         """Return uniform quant bits from cfg for fixed-mode rounds."""
@@ -689,7 +964,6 @@ class FedAvgQuant(FedAvg):
             props_res = client_proxy.get_properties(
                 GetPropertiesIns(config={}),
                 timeout=5.0,
-                group_id=None,
             )
             if props_res is not None:
                 props = getattr(props_res, "properties", {}) or {}

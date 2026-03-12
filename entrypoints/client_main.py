@@ -179,6 +179,9 @@ def main() -> None:
     log.info(f"  Experiment  : {cfg.experiment.name}")
     log.info(f"  Quant mode  : {cfg.quantization.mode}")
     log.info(f"  Lowp dtype  : {cfg.quantization.lowp_dtype}")
+    log.info(f"  INT8 impl   : {cfg.quantization.int8_impl}")
+    log.info(f"  INT8 backend: {cfg.quantization.int8_backend}")
+    log.info(f"  QAT scope   : {cfg.quantization.qat_scope}")
 
     # 2. Load this client's data partition
     train_indices, eval_indices = _load_client_partition(PARTITION_FILE, CLIENT_ID)

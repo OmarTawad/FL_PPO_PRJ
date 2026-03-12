@@ -214,6 +214,9 @@ def main() -> None:
     log.info(f"  Clients     : {cfg.n_clients}")
     log.info(f"  Quant mode  : {cfg.quantization.mode}")
     log.info(f"  Lowp dtype  : {cfg.quantization.lowp_dtype}")
+    log.info(f"  INT8 impl   : {cfg.quantization.int8_impl}")
+    log.info(f"  INT8 backend: {cfg.quantization.int8_backend}")
+    log.info(f"  QAT scope   : {cfg.quantization.qat_scope}")
 
     # 2. Verify partition file exists
     _load_partition_file(PARTITION_FILE)  # validates file exists; clients read it
@@ -273,6 +276,8 @@ def main() -> None:
         "rounds_completed": len(json_logs),
         "n_clients": cfg.n_clients,
         "quantization_mode": cfg.quantization.mode,
+        "int8_impl": cfg.quantization.int8_impl,
+        "qat_scope": cfg.quantization.qat_scope,
         "partition_file": PARTITION_FILE,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
     }

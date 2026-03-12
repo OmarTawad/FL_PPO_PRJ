@@ -31,6 +31,7 @@ from typing import List, Optional, Tuple
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from torch.ao.quantization.quantize_fx import convert_fx, prepare_fx
 from src.compression import fp16 as _fp16_module
 from src.compression import bf16 as _bf16_module
 from src.compression.lowp import (
@@ -45,6 +46,125 @@ QUANT_UNSUPPORTED = "QUANT_UNSUPPORTED"
 _BACKEND_PREFERENCE = ["fbgemm", "x86", "onednn", "qnnpack"]
 
 log = logging.getLogger(__name__)
+
+
+class _QuantIOWrapper(nn.Module):
+    """
+    Wrap a float model with quant/dequant stubs for eager static quantization.
+
+    This keeps the inner model unchanged while ensuring converted quantized ops
+    receive quantized inputs at runtime.
+    """
+
+    def __init__(self, core: nn.Module):
+        super().__init__()
+        self.quant = torch.ao.quantization.QuantStub()
+        self.core = core
+        self.dequant = torch.ao.quantization.DeQuantStub()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.quant(x)
+        x = self.core(x)
+        x = self.dequant(x)
+        return x
+
+
+def _build_static_int8_candidate(model: nn.Module) -> nn.Module:
+    """
+    Build a quantization-ready candidate model:
+      QuantStub -> fused MobileNetV2 core -> DeQuantStub.
+    """
+    core_model = copy.deepcopy(model).float().eval()
+    core_model = _fuse_mobilenetv2(core_model)
+    return _QuantIOWrapper(core_model).float().eval()
+
+
+def _example_inputs_from_loader(calib_loader: DataLoader) -> Tuple[torch.Tensor]:
+    """Return one float32 example input tensor tuple for FX prepare."""
+    for images, _ in calib_loader:
+        if images.dtype != torch.float32:
+            images = images.float()
+        return (images[:1],)
+    raise RuntimeError("empty_calibration_loader")
+
+
+def _convert_static_int8_eager(
+    model: nn.Module,
+    calib_loader: DataLoader,
+    calibration_samples: int,
+    backend: str,
+) -> nn.Module:
+    """Eager-mode static INT8 conversion with quantized IO wrapper."""
+    work_model = _build_static_int8_candidate(model)
+    torch.backends.quantized.engine = backend
+    work_model.qconfig = torch.quantization.get_default_qconfig(backend)
+    torch.quantization.prepare(work_model, inplace=True)
+    seen = _calibrate(work_model, calib_loader, n_samples=calibration_samples)
+    if seen < 1:
+        raise RuntimeError("empty_calibration_loader")
+    torch.quantization.convert(work_model, inplace=True)
+    _verify_inference(work_model, calib_loader)
+    return work_model
+
+
+def _convert_static_int8_fx(
+    model: nn.Module,
+    calib_loader: DataLoader,
+    calibration_samples: int,
+    backend: str,
+) -> nn.Module:
+    """FX-graph static INT8 conversion fallback for non-quantizable eager paths."""
+    work_model = copy.deepcopy(model).float().eval()
+    torch.backends.quantized.engine = backend
+    qconfig_mapping = torch.ao.quantization.get_default_qconfig_mapping(backend)
+    example_inputs = _example_inputs_from_loader(calib_loader)
+    prepared = prepare_fx(work_model, qconfig_mapping, example_inputs)
+    seen = _calibrate(prepared, calib_loader, n_samples=calibration_samples)
+    if seen < 1:
+        raise RuntimeError("empty_calibration_loader")
+    quantized = convert_fx(prepared)
+    _verify_inference(quantized, calib_loader)
+    return quantized
+
+
+def _convert_static_int8_with_backend(
+    model: nn.Module,
+    calib_loader: DataLoader,
+    calibration_samples: int,
+    backend: str,
+) -> Tuple[nn.Module, str]:
+    """
+    Try eager static INT8 first, then FX static INT8 for compatibility.
+
+    Returns:
+      (quantized_model, path_label) where path_label in {"eager", "fx"}.
+    Raises:
+      RuntimeError with combined eager/fx error summary on total failure.
+    """
+    eager_err: Optional[Exception] = None
+    try:
+        return _convert_static_int8_eager(
+            model, calib_loader, calibration_samples, backend
+        ), "eager"
+    except Exception as err:  # noqa: PERF203 - retain explicit exception for diagnostics
+        eager_err = err
+        log.debug(
+            "Eager static INT8 path failed (backend=%s): %s: %s",
+            backend,
+            type(err).__name__,
+            str(err)[:180],
+        )
+
+    try:
+        return _convert_static_int8_fx(
+            model, calib_loader, calibration_samples, backend
+        ), "fx"
+    except Exception as fx_err:
+        raise RuntimeError(
+            "static_int8_conversion_failed "
+            f"(eager={type(eager_err).__name__}:{str(eager_err)[:180]}; "
+            f"fx={type(fx_err).__name__}:{str(fx_err)[:180]})"
+        ) from fx_err
 
 
 # ─── Backend helpers ──────────────────────────────────────────────────────────
@@ -63,18 +183,12 @@ def _probe_backend_works(model: nn.Module, calib_loader: DataLoader, backend: st
     Returns True if the backend runs INT8 end-to-end. Does NOT mutate model.
     """
     try:
-        m = copy.deepcopy(model).float().eval()
-        m = _fuse_mobilenetv2(m)
-        torch.backends.quantized.engine = backend
-        m.qconfig = torch.quantization.get_default_qconfig(backend)
-        torch.quantization.prepare(m, inplace=True)
-        with torch.no_grad():
-            for imgs, _ in calib_loader:
-                m(imgs.float()); break
-        torch.quantization.convert(m, inplace=True)
-        with torch.no_grad():
-            for imgs, _ in calib_loader:
-                m(imgs.float()); break
+        _convert_static_int8_with_backend(
+            model,
+            calib_loader=calib_loader,
+            calibration_samples=1,
+            backend=backend,
+        )
         return True
     except Exception as e:
         log.debug(f"  backend='{backend}' probe: {type(e).__name__}: {str(e)[:80]}")
@@ -295,33 +409,17 @@ def try_static_int8(
     else:
         log.info(f"Using forced backend='{backend}'")
 
-    # Always work on a deep copy — never mutate the caller's model
-    work_model = copy.deepcopy(model).float().eval()
-
     try:
-        # Step 3: Fuse
-        work_model = _fuse_mobilenetv2(work_model)
-
-        # Step 4: Set qconfig
-        torch.backends.quantized.engine = backend
-        work_model.qconfig = torch.quantization.get_default_qconfig(backend)
-
-        # Step 3: Prepare (insert observers)
-        torch.quantization.prepare(work_model, inplace=True)
-
-        # Step 4: Calibrate
-        seen = _calibrate(work_model, calib_loader, n_samples=calibration_samples)
-        log.info(f"INT8 calibration: {seen} samples processed (backend={backend})")
-
-        # Step 5: Convert
-        torch.quantization.convert(work_model, inplace=True)
-
-        # Step 6: Verify inference works — conversion may succeed but inference
-        # can fail if the QuantizedCPU kernel is missing (e.g. torch+cpu wheel).
-        # Better to detect this now than fail mid-FL-round at the client.
-        _verify_inference(work_model, calib_loader)
-
-        log.info("Static INT8 conversion successful → quant_method=static_int8")
+        work_model, path = _convert_static_int8_with_backend(
+            model,
+            calib_loader=calib_loader,
+            calibration_samples=calibration_samples,
+            backend=backend,
+        )
+        log.info(
+            "Static INT8 conversion successful via %s path → quant_method=static_int8",
+            path,
+        )
         return work_model, "static_int8"
 
     except Exception as int8_err:
@@ -347,3 +445,45 @@ def try_static_int8(
             fp32_model = copy.deepcopy(model).float().eval()
             log.info("Fallback to FP32 → quant_method=fp32_fallback")
             return fp32_model, "fp32_fallback"
+
+
+def check_static_int8_convert_and_infer(
+    model: nn.Module,
+    calib_loader: DataLoader,
+    calibration_samples: int = 128,
+    backend: Optional[str] = None,
+) -> Tuple[bool, str, str]:
+    """
+    Diagnostic-only static INT8 conversion+inference check without fallback.
+
+    Returns:
+        (success, method, error)
+          success=True  -> ("static_int8", "")
+          success=False -> ("int8_postcheck_failed", "<explicit_error>")
+    """
+    try:
+        _log_supported_engines()
+        selected_backend = backend
+        if selected_backend is None:
+            selected_backend = auto_select_backend(model, calib_loader)
+            if selected_backend is None:
+                return False, "int8_postcheck_failed", "no_working_backend"
+
+        _, path = _convert_static_int8_with_backend(
+            model,
+            calib_loader=calib_loader,
+            calibration_samples=calibration_samples,
+            backend=str(selected_backend),
+        )
+        log.info(
+            "INT8 postcheck conversion succeeded via %s path (backend=%s)",
+            path,
+            selected_backend,
+        )
+        return True, "static_int8", ""
+    except Exception as err:
+        return (
+            False,
+            "int8_postcheck_failed",
+            f"{type(err).__name__}:{str(err)[:500]}",
+        )

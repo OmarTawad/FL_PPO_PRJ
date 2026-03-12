@@ -61,6 +61,7 @@ COLOURS = {
     "fp16":       "#2196F3",   # blue
     "bf16":       "#00ACC1",   # cyan
     "static_int8": "#FF9800",  # amber
+    "qat_int8_train": "#FFC107",  # yellow
     "fp16_fallback": "#9C27B0",  # purple
     "bf16_fallback": "#7E57C2",  # deep purple
     "fp32_fallback": "#F44336",  # red
@@ -72,6 +73,7 @@ QUANT_LABELS = {
     "fp16":           "FP16",
     "bf16":           "BF16",
     "static_int8":    "INT8 (static)",
+    "qat_int8_train": "INT8 (QAT train)",
     "fp16_fallback":  "FP16 (fallback)",
     "bf16_fallback":  "BF16 (fallback)",
     "fp32_fallback":  "FP32 (fallback)",
@@ -209,6 +211,7 @@ def plot_quant_distribution(logs: List[dict], out_path: Path, show: bool = False
         "fp16",
         "bf16",
         "static_int8",
+        "qat_int8_train",
         "fp16_fallback",
         "bf16_fallback",
         "fp32_fallback",

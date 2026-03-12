@@ -101,7 +101,24 @@ class QuantizationConfig:
     mode: str = "adaptive"             # adaptive | fixed_fp32 | fixed_fp16 | fixed_int8 | mixed
     fixed_bits: int = 32               # used only if mode=fixed_*
     lowp_dtype: str = "bf16"           # dtype used when bits=16: bf16 | fp16
+    int8_impl: str = "static"          # static | qat
+    int8_backend: str = "auto"         # auto | fbgemm | x86 | onednn | qnnpack
     calibration_samples: int = 128
+    qat_scope: str = "full"            # full | classifier_only
+    qat_convert_after_fit: bool = False
+    qat_eval_batches_for_convert_check: int = 1
+    qat_convert_probe_client_id: int = -1  # -1 = all clients
+    qat_convert_probe_round: int = 0        # 0 = all rounds
+    int8_postcheck_enabled: bool = False
+    int8_postcheck_backend: str = "auto"    # auto | fbgemm | x86 | onednn | qnnpack
+    int8_postcheck_after_fit: bool = False
+    int8_postcheck_probe_client_id: int = -1  # -1 = all clients
+    int8_postcheck_probe_round: int = 0        # 0 = all rounds
+    int8_postcheck_eval_batches: int = 1
+    transport_mode: str = "model_fp32"   # model_fp32 | delta
+    transport_per_client: Dict[int, str] = field(default_factory=dict)  # fp32 | int8
+    transport_int8_scheme: str = "symm_per_tensor_v1"
+    transport_require_decode_success: bool = True
     per_client: Optional[Dict[int, int]] = None   # used if mode=mixed
 
     def __post_init__(self):
@@ -116,6 +133,68 @@ class QuantizationConfig:
             raise ValueError(
                 f"quantization.lowp_dtype must be 'bf16' or 'fp16', got: {self.lowp_dtype}"
             )
+        self.int8_impl = str(self.int8_impl).strip().lower()
+        if self.int8_impl not in ("static", "qat"):
+            raise ValueError(
+                f"quantization.int8_impl must be 'static' or 'qat', got: {self.int8_impl}"
+            )
+        self.int8_backend = str(self.int8_backend).strip().lower()
+        valid_int8_backends = ("auto", "fbgemm", "x86", "onednn", "qnnpack")
+        if self.int8_backend not in valid_int8_backends:
+            raise ValueError(
+                f"quantization.int8_backend must be one of {valid_int8_backends}, got: {self.int8_backend}"
+            )
+        self.int8_postcheck_backend = str(self.int8_postcheck_backend).strip().lower()
+        if self.int8_postcheck_backend not in valid_int8_backends:
+            raise ValueError(
+                "quantization.int8_postcheck_backend must be one of "
+                f"{valid_int8_backends}, got: {self.int8_postcheck_backend}"
+            )
+        self.qat_scope = str(self.qat_scope).strip().lower()
+        if self.qat_scope not in ("full", "classifier_only"):
+            raise ValueError(
+                "quantization.qat_scope must be 'full' or 'classifier_only', "
+                f"got: {self.qat_scope}"
+            )
+        if self.qat_eval_batches_for_convert_check < 1:
+            raise ValueError(
+                "quantization.qat_eval_batches_for_convert_check must be >= 1"
+            )
+        if self.qat_convert_probe_round < 0:
+            raise ValueError(
+                "quantization.qat_convert_probe_round must be >= 0"
+            )
+        if self.int8_postcheck_probe_round < 0:
+            raise ValueError(
+                "quantization.int8_postcheck_probe_round must be >= 0"
+            )
+        if self.int8_postcheck_eval_batches < 1:
+            raise ValueError(
+                "quantization.int8_postcheck_eval_batches must be >= 1"
+            )
+        self.transport_mode = str(self.transport_mode).strip().lower()
+        if self.transport_mode not in ("model_fp32", "delta"):
+            raise ValueError(
+                "quantization.transport_mode must be 'model_fp32' or 'delta', "
+                f"got: {self.transport_mode}"
+            )
+        self.transport_int8_scheme = str(self.transport_int8_scheme).strip().lower()
+        if self.transport_int8_scheme != "symm_per_tensor_v1":
+            raise ValueError(
+                "quantization.transport_int8_scheme must be 'symm_per_tensor_v1', "
+                f"got: {self.transport_int8_scheme}"
+            )
+        normalized_transport: Dict[int, str] = {}
+        for raw_cid, raw_dtype in (self.transport_per_client or {}).items():
+            cid = int(raw_cid)
+            dtype = str(raw_dtype).strip().lower()
+            if dtype not in ("fp32", "int8"):
+                raise ValueError(
+                    "quantization.transport_per_client values must be 'fp32' or 'int8', "
+                    f"got client {cid}: {raw_dtype}"
+                )
+            normalized_transport[cid] = dtype
+        self.transport_per_client = normalized_transport
         if self.mode == "mixed" and self.per_client is None:
             raise ValueError("quantization.mode=mixed requires per_client mapping")
         # NOTE: No dynamic INT8 fallback. Fallback chain: static_int8 -> FP16 -> FP32,
@@ -270,11 +349,49 @@ def _parse_quant(raw: dict) -> QuantizationConfig:
     per_client = None
     if "per_client" in raw:
         per_client = {int(k): int(v) for k, v in raw["per_client"].items()}
+    transport_per_client = {}
+    if "transport_per_client" in raw:
+        transport_per_client = {
+            int(k): str(v) for k, v in raw["transport_per_client"].items()
+        }
     return QuantizationConfig(
         mode=str(raw.get("mode", "adaptive")),
         fixed_bits=int(raw.get("fixed_bits", 32)),
         lowp_dtype=str(raw.get("lowp_dtype", "bf16")),
+        int8_impl=str(raw.get("int8_impl", "static")),
+        int8_backend=str(raw.get("int8_backend", "auto")),
         calibration_samples=int(raw.get("calibration_samples", 128)),
+        qat_scope=str(raw.get("qat_scope", "full")),
+        qat_convert_after_fit=bool(raw.get("qat_convert_after_fit", False)),
+        qat_eval_batches_for_convert_check=int(
+            raw.get("qat_eval_batches_for_convert_check", 1)
+        ),
+        qat_convert_probe_client_id=int(
+            raw.get("qat_convert_probe_client_id", -1)
+        ),
+        qat_convert_probe_round=int(
+            raw.get("qat_convert_probe_round", 0)
+        ),
+        int8_postcheck_enabled=bool(raw.get("int8_postcheck_enabled", False)),
+        int8_postcheck_backend=str(raw.get("int8_postcheck_backend", "auto")),
+        int8_postcheck_after_fit=bool(raw.get("int8_postcheck_after_fit", False)),
+        int8_postcheck_probe_client_id=int(
+            raw.get("int8_postcheck_probe_client_id", -1)
+        ),
+        int8_postcheck_probe_round=int(
+            raw.get("int8_postcheck_probe_round", 0)
+        ),
+        int8_postcheck_eval_batches=int(
+            raw.get("int8_postcheck_eval_batches", 1)
+        ),
+        transport_mode=str(raw.get("transport_mode", "model_fp32")),
+        transport_per_client=transport_per_client,
+        transport_int8_scheme=str(
+            raw.get("transport_int8_scheme", "symm_per_tensor_v1")
+        ),
+        transport_require_decode_success=bool(
+            raw.get("transport_require_decode_success", True)
+        ),
         per_client=per_client,
     )
 
@@ -384,6 +501,11 @@ if __name__ == "__main__":
         print(f"     rounds:     {cfg.experiment.rounds}")
         print(f"     quant mode: {cfg.quantization.mode}")
         print(f"     lowp dtype: {cfg.quantization.lowp_dtype}")
+        print(f"     int8 impl: {cfg.quantization.int8_impl}")
+        print(f"     int8 backend: {cfg.quantization.int8_backend}")
+        print(f"     int8 postcheck: {cfg.quantization.int8_postcheck_enabled}")
+        print(f"     int8 postcheck backend: {cfg.quantization.int8_postcheck_backend}")
+        print(f"     qat scope: {cfg.quantization.qat_scope}")
         print(f"     batch (weak): {cfg.fl.batch_size_for('weak')}")
         print(f"     num_workers:  {cfg.fl.num_workers}")
         sys.exit(0)

@@ -51,6 +51,6 @@ def precision_from_quant_method(method: str) -> str:
         return "fp16"
     if value in ("bf16", "bf16_fallback"):
         return "bf16"
-    if value == "static_int8":
+    if value in ("static_int8", "qat_int8_train"):
         return "int8"
     return "unknown"

@@ -29,6 +29,7 @@ from torch.utils.data import DataLoader
 
 from src.compression import fp32, fp16, bf16
 from src.compression.int8 import try_static_int8
+from src.compression.qat import prepare_qat_model
 from src.compression.lowp import (
     resolve_lowp_dtype,
 )
@@ -43,6 +44,7 @@ METHOD_FP32           = "fp32"
 METHOD_FP16           = "fp16"
 METHOD_BF16           = "bf16"
 METHOD_STATIC_INT8    = "static_int8"
+METHOD_QAT_INT8_TRAIN = "qat_int8_train"
 METHOD_FP16_FALLBACK  = "fp16_fallback"
 METHOD_BF16_FALLBACK  = "bf16_fallback"
 METHOD_FP32_FALLBACK  = "fp32_fallback"
@@ -53,8 +55,11 @@ def quantize(
     bits: int,
     calib_loader: Optional[DataLoader] = None,
     calibration_samples: int = 128,
-    backend: str = "qnnpack",
+    backend: str = "auto",
     lowp_dtype: str = "bf16",
+    int8_impl: str = "static",
+    qat_scope: str = "full",
+    qat_inplace: bool = False,
 ) -> Tuple[nn.Module, str]:
     """
     Apply quantization to a model and return (quantized_model, method_string).
@@ -64,11 +69,14 @@ def quantize(
         bits: Target bit width — must be 32, 16, or 8.
         calib_loader: Required when bits=8 (INT8 calibration). Ignored for 32/16.
         calibration_samples: Number of calibration images (default 128).
-        backend: Quantization backend ("qnnpack" for CPU).
+        backend: Quantization backend ("auto" | "fbgemm" | "x86" | "onednn" | "qnnpack").
+        int8_impl: "static" (post-training static conversion path) or
+            "qat" (train-time fake-quant path).
 
     Returns:
         (quantized_model, method) — model is a deep copy; method is one of
-        {fp32, fp16, bf16, static_int8, fp16_fallback, bf16_fallback, fp32_fallback}.
+        {fp32, fp16, bf16, static_int8, qat_int8_train,
+         fp16_fallback, bf16_fallback, fp32_fallback}.
 
     Raises:
         ValueError: If bits not in {32, 16, 8}.
@@ -86,17 +94,35 @@ def quantize(
             return bf16.apply(model, inplace=False), METHOD_BF16
         return fp16.apply(model, inplace=False), METHOD_FP16
 
-    # bits == 8: attempt static INT8
+    # bits == 8: static INT8 or QAT INT8 train path
+    int8_impl_norm = str(int8_impl).strip().lower()
+    if int8_impl_norm == "qat":
+        qat_model, _ = prepare_qat_model(
+            model,
+            backend=backend,
+            inplace=qat_inplace,
+            fuse_model=True,
+            scope=qat_scope,
+            prepare_if_needed=qat_inplace,
+        )
+        return qat_model, METHOD_QAT_INT8_TRAIN
+
+    if int8_impl_norm != "static":
+        raise ValueError(
+            f"int8_impl must be 'static' or 'qat', got: {int8_impl}"
+        )
+
     if calib_loader is None:
         raise ValueError(
-            "calib_loader is required for bits=8 (static INT8 calibration). "
+            "calib_loader is required for bits=8 when int8_impl=static. "
             "Pass a DataLoader with ≥128 samples."
         )
+    resolved_backend = None if str(backend).strip().lower() == "auto" else str(backend).strip().lower()
     return try_static_int8(
         model,
         calib_loader=calib_loader,
         calibration_samples=calibration_samples,
-        backend=backend,
+        backend=resolved_backend,
         inplace=False,
         lowp_dtype=lowp_dtype,
     )
@@ -107,7 +133,11 @@ def quantize_action(
     action: int,
     calib_loader: Optional[DataLoader] = None,
     calibration_samples: int = 128,
+    backend: str = "auto",
     lowp_dtype: str = "bf16",
+    int8_impl: str = "static",
+    qat_scope: str = "full",
+    qat_inplace: bool = False,
 ) -> Tuple[nn.Module, str]:
     """
     Convenience wrapper: convert PPO action integer to bits and call quantize().
@@ -138,4 +168,8 @@ def quantize_action(
     bits = _ACTION_TO_BITS[action]
     return quantize(model, bits=bits, calib_loader=calib_loader,
                     calibration_samples=calibration_samples,
-                    lowp_dtype=lowp_dtype)
+                    backend=backend,
+                    lowp_dtype=lowp_dtype,
+                    int8_impl=int8_impl,
+                    qat_scope=qat_scope,
+                    qat_inplace=qat_inplace)
