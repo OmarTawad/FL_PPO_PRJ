@@ -48,6 +48,10 @@ from src.compression.qat import (
     get_qat_backend_used,
     get_qat_scope_used,
 )
+from src.compression.pruning import (
+    apply_magnitude_unstructured_pruning,
+    resolve_pruning_amount,
+)
 
 log = logging.getLogger(__name__)
 
@@ -315,6 +319,7 @@ class FlowerClient(fl.client.NumPyClient):
         self._train_ds_noaug: Optional[Dataset] = None
         self._eval_ds: Optional[Dataset] = None
         self._qat_work_model: Optional[torch.nn.Module] = None
+        self._pruning_applied_once: bool = False
 
     def _get_train_dataset(self, augment: bool) -> Dataset:
         if augment:
@@ -455,6 +460,13 @@ class FlowerClient(fl.client.NumPyClient):
         int8_convert_error = ""
         int8_inference_check_success = 0
         posttrain_inference_method_actual = "not_attempted"
+        pruning_method = str(self.cfg.pruning.method)
+        pruning_amount_requested = 0.0
+        pruning_amount_applied = 0.0
+        pruning_requested = 0
+        pruning_applied = 0
+        pruning_active_during_training = 0
+        pruning_skip_reason = ""
 
         if quant_bits == 8 and int8_impl == "qat":
             q_model = self._get_or_prepare_qat_work_model()
@@ -495,6 +507,54 @@ class FlowerClient(fl.client.NumPyClient):
                     backend=self.cfg.quantization.int8_backend,
                     lowp_dtype=self.cfg.quantization.lowp_dtype,
                 )
+
+        if self.cfg.pruning.enabled:
+            pruning_amount_requested = resolve_pruning_amount(
+                default_amount=self.cfg.pruning.amount,
+                per_client=self.cfg.pruning.per_client,
+                client_id=self.client_id,
+            )
+            pruning_requested = int(pruning_amount_requested > 0.0)
+            should_apply_pruning = pruning_requested and (
+                self.cfg.pruning.apply_per_round or (not self._pruning_applied_once)
+            )
+            if should_apply_pruning:
+                try:
+                    (
+                        pruning_applied_bool,
+                        pruning_skip_reason,
+                        pruned_module_count,
+                        pruning_amount_applied,
+                    ) = apply_magnitude_unstructured_pruning(
+                        q_model,
+                        amount=pruning_amount_requested,
+                        target_modules=self.cfg.pruning.target_modules,
+                    )
+                    pruning_applied = int(pruning_applied_bool)
+                    pruning_active_during_training = int(pruning_applied_bool)
+                    if pruning_applied_bool:
+                        self._pruning_applied_once = True
+                    log.info(
+                        f"[Client {self.client_id}] pruning round={fl_round} "
+                        f"requested={pruning_requested} applied={pruning_applied} "
+                        f"method={pruning_method} amount_requested={pruning_amount_requested:.4f} "
+                        f"amount_applied={pruning_amount_applied:.4f} "
+                        f"targets={','.join(self.cfg.pruning.target_modules)} "
+                        f"target_module_count={pruned_module_count} "
+                        f"skip_reason={pruning_skip_reason or 'none'}"
+                    )
+                except Exception as err:
+                    pruning_applied = 0
+                    pruning_active_during_training = 0
+                    pruning_amount_applied = 0.0
+                    pruning_skip_reason = f"error:{type(err).__name__}"
+                    log.warning(
+                        f"[Client {self.client_id}] pruning failed: {type(err).__name__}: {err}"
+                    )
+            elif pruning_requested and not self.cfg.pruning.apply_per_round:
+                pruning_skip_reason = "apply_per_round_false_already_applied"
+            elif not pruning_requested:
+                pruning_skip_reason = "not_requested_for_client"
 
         # 6. Build optimizer on the quantized model
         optimizer = build_optimizer(
@@ -703,6 +763,13 @@ class FlowerClient(fl.client.NumPyClient):
                     "int8_convert_error": int8_convert_error,
                     "int8_inference_check_success": int8_inference_check_success,
                     "posttrain_inference_method_actual": posttrain_inference_method_actual,
+                    "pruning_requested": pruning_requested,
+                    "pruning_applied": pruning_applied,
+                    "pruning_amount_requested": float(pruning_amount_requested),
+                    "pruning_amount_applied": float(pruning_amount_applied),
+                    "pruning_method": pruning_method,
+                    "pruning_active_during_training": pruning_active_during_training,
+                    "pruning_skip_reason": pruning_skip_reason,
                     "transport_mode": self.cfg.quantization.transport_mode,
                     "transport_dtype_requested": transport_dtype_requested,
                     "transport_dtype_actual": transport_dtype_actual,
@@ -772,6 +839,13 @@ class FlowerClient(fl.client.NumPyClient):
             "int8_convert_error": int8_convert_error,
             "int8_inference_check_success": int8_inference_check_success,
             "posttrain_inference_method_actual": posttrain_inference_method_actual,
+            "pruning_requested": pruning_requested,
+            "pruning_applied": pruning_applied,
+            "pruning_amount_requested": float(pruning_amount_requested),
+            "pruning_amount_applied": float(pruning_amount_applied),
+            "pruning_method": pruning_method,
+            "pruning_active_during_training": pruning_active_during_training,
+            "pruning_skip_reason": pruning_skip_reason,
             "transport_mode": self.cfg.quantization.transport_mode,
             "transport_dtype_requested": transport_dtype_requested,
             "transport_dtype_actual": transport_dtype_actual,

@@ -66,6 +66,7 @@ COLOURS = {
     "bf16_fallback": "#7E57C2",  # deep purple
     "fp32_fallback": "#F44336",  # red
     "other":      "#9E9E9E",   # grey
+    "pruning":    "#8E24AA",   # violet
 }
 
 QUANT_LABELS = {
@@ -303,6 +304,70 @@ def plot_reward(logs: List[dict], out_path: Path, show: bool = False) -> None:
     log.info(f"  Saved: {out_path}")
 
 
+def plot_pruning_applied(logs: List[dict], out_path: Path, show: bool = False) -> None:
+    """
+    Plot pruning activity per round from `pruning_applied` per-client maps.
+
+    Skips plot generation if no pruning fields exist in logs.
+    """
+    rounds = [_safe_get(d, "round", i + 1) for i, d in enumerate(logs)]
+    applied_counts: List[int] = []
+    requested_counts: List[int] = []
+    saw_pruning_field = False
+
+    for d in logs:
+        applied_map = _safe_get(d, "pruning_applied", {})
+        requested_map = _safe_get(d, "pruning_requested", {})
+        if isinstance(applied_map, dict) and applied_map:
+            saw_pruning_field = True
+        if isinstance(requested_map, dict) and requested_map:
+            saw_pruning_field = True
+        applied_counts.append(
+            sum(int(v) for v in applied_map.values()) if isinstance(applied_map, dict) else 0
+        )
+        requested_counts.append(
+            sum(int(v) for v in requested_map.values()) if isinstance(requested_map, dict) else 0
+        )
+
+    if not saw_pruning_field:
+        log.warning("  No pruning fields found — skipping pruning_applied_clients plot")
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(
+        rounds,
+        requested_counts,
+        color="#CE93D8",
+        linewidth=1.5,
+        linestyle="--",
+        marker="s",
+        markersize=4,
+        label="Clients with pruning requested",
+    )
+    ax.plot(
+        rounds,
+        applied_counts,
+        color=COLOURS["pruning"],
+        linewidth=2.0,
+        marker="o",
+        markersize=4,
+        label="Clients with pruning applied",
+    )
+
+    ax.set_xlabel("FL Round", fontsize=11)
+    ax.set_ylabel("# Clients", fontsize=11)
+    ax.set_title("Pruning Activity per Round", fontsize=12)
+    ax.legend(loc="upper right")
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(fig)
+    log.info(f"  Saved: {out_path}")
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -347,7 +412,7 @@ def main() -> None:
         log.error(f"No round logs found in {run_dir}")
         sys.exit(1)
 
-    log.info(f"Generating 5 plots for {len(logs)} rounds...")
+    log.info(f"Generating plots for {len(logs)} rounds...")
 
     # Generate all plots (never crash on missing data)
     try:
@@ -374,6 +439,11 @@ def main() -> None:
         plot_reward(logs,             out_dir / "reward.png",             args.show)
     except Exception as e:
         log.warning(f"  reward.png failed: {e}")
+
+    try:
+        plot_pruning_applied(logs,    out_dir / "pruning_applied_clients.png", args.show)
+    except Exception as e:
+        log.warning(f"  pruning_applied_clients.png failed: {e}")
 
     log.info("All plots generated.")
 

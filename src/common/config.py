@@ -201,6 +201,52 @@ class QuantizationConfig:
         # logged as QUANT_UNSUPPORTED. Dynamic INT8 (quantize_dynamic) is never used.
 
 
+@dataclass
+class PruningConfig:
+    enabled: bool = False
+    method: str = "magnitude_unstructured"   # currently supported: magnitude_unstructured
+    amount: float = 0.0
+    apply_per_round: bool = True
+    per_client: Dict[int, float] = field(default_factory=dict)
+    target_modules: List[str] = field(default_factory=lambda: ["conv2d", "linear"])
+
+    def __post_init__(self):
+        self.method = str(self.method).strip().lower()
+        if self.method != "magnitude_unstructured":
+            raise ValueError(
+                "pruning.method must be 'magnitude_unstructured', "
+                f"got: {self.method}"
+            )
+        if not (0.0 <= float(self.amount) < 1.0):
+            raise ValueError(
+                f"pruning.amount must be in [0,1), got: {self.amount}"
+            )
+        normalized_targets: List[str] = []
+        valid_targets = {"conv2d", "linear"}
+        for target in self.target_modules:
+            t = str(target).strip().lower()
+            if t not in valid_targets:
+                raise ValueError(
+                    f"pruning.target_modules entries must be in {sorted(valid_targets)}, got: {target}"
+                )
+            if t not in normalized_targets:
+                normalized_targets.append(t)
+        if not normalized_targets:
+            raise ValueError("pruning.target_modules cannot be empty")
+        self.target_modules = normalized_targets
+
+        normalized_per_client: Dict[int, float] = {}
+        for raw_cid, raw_amount in (self.per_client or {}).items():
+            cid = int(raw_cid)
+            amt = float(raw_amount)
+            if not (0.0 <= amt < 1.0):
+                raise ValueError(
+                    f"pruning.per_client[{cid}] must be in [0,1), got: {raw_amount}"
+                )
+            normalized_per_client[cid] = amt
+        self.per_client = normalized_per_client
+
+
 # Per-profile batch size defaults (can be overridden per config)
 _DEFAULT_BATCH_PER_PROFILE: Dict[str, int] = {
     "strong":       32,
@@ -271,6 +317,7 @@ class Config:
     clients: ClientsConfig
     data: DataConfig
     quantization: QuantizationConfig
+    pruning: PruningConfig
     fl: FLConfig
     rl: RLConfig
     logging: LoggingConfig
@@ -396,6 +443,20 @@ def _parse_quant(raw: dict) -> QuantizationConfig:
     )
 
 
+def _parse_pruning(raw: dict) -> PruningConfig:
+    per_client = {}
+    if "per_client" in raw:
+        per_client = {int(k): float(v) for k, v in raw["per_client"].items()}
+    return PruningConfig(
+        enabled=bool(raw.get("enabled", False)),
+        method=str(raw.get("method", "magnitude_unstructured")),
+        amount=float(raw.get("amount", 0.0)),
+        apply_per_round=bool(raw.get("apply_per_round", True)),
+        per_client=per_client,
+        target_modules=list(raw.get("target_modules", ["conv2d", "linear"])),
+    )
+
+
 def load_config(path: str) -> Config:
     """
     Load and validate an experiment YAML config file.
@@ -449,6 +510,7 @@ def load_config(path: str) -> Config:
     )
 
     quantization = _parse_quant(raw["quantization"])
+    pruning = _parse_pruning(raw.get("pruning", {}))
     fl = _parse_fl(raw["fl"])
 
     rl_raw = raw.get("rl", {})
@@ -478,6 +540,7 @@ def load_config(path: str) -> Config:
         clients=clients,
         data=data,
         quantization=quantization,
+        pruning=pruning,
         fl=fl,
         rl=rl,
         logging=logging_cfg,
@@ -506,6 +569,9 @@ if __name__ == "__main__":
         print(f"     int8 postcheck: {cfg.quantization.int8_postcheck_enabled}")
         print(f"     int8 postcheck backend: {cfg.quantization.int8_postcheck_backend}")
         print(f"     qat scope: {cfg.quantization.qat_scope}")
+        print(f"     pruning enabled: {cfg.pruning.enabled}")
+        print(f"     pruning method: {cfg.pruning.method}")
+        print(f"     pruning amount: {cfg.pruning.amount}")
         print(f"     batch (weak): {cfg.fl.batch_size_for('weak')}")
         print(f"     num_workers:  {cfg.fl.num_workers}")
         sys.exit(0)

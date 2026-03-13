@@ -341,6 +341,13 @@ class FedAvgQuant(FedAvg):
         int8_convert_error: Dict[str, str] = {}
         int8_inference_check_success: Dict[str, int] = {}
         posttrain_inference_method_actual: Dict[str, str] = {}
+        pruning_requested: Dict[str, int] = {}
+        pruning_applied: Dict[str, int] = {}
+        pruning_amount_requested: Dict[str, float] = {}
+        pruning_amount_applied: Dict[str, float] = {}
+        pruning_method_used: Dict[str, str] = {}
+        pruning_active_during_training: Dict[str, int] = {}
+        pruning_skip_reason: Dict[str, str] = {}
         transport_dtype_requested: Dict[str, str] = {}
         transport_dtype_actual: Dict[str, str] = {}
         transport_payload_kind: Dict[str, str] = {}
@@ -424,6 +431,13 @@ class FedAvgQuant(FedAvg):
             posttrain_method_val = str(
                 m.get("posttrain_inference_method_actual", "")
             ).strip()
+            pruning_requested_val = int(m.get("pruning_requested", 0))
+            pruning_applied_val = int(m.get("pruning_applied", 0))
+            pruning_amount_requested_val = float(m.get("pruning_amount_requested", 0.0))
+            pruning_amount_applied_val = float(m.get("pruning_amount_applied", 0.0))
+            pruning_method_val = str(m.get("pruning_method", "")).strip()
+            pruning_active_val = int(m.get("pruning_active_during_training", 0))
+            pruning_skip_reason_val = str(m.get("pruning_skip_reason", "")).strip()
             transport_requested_val = str(
                 m.get("transport_dtype_requested", "fp32")
             ).strip().lower()
@@ -478,6 +492,15 @@ class FedAvgQuant(FedAvg):
             int8_inference_check_success[cid] = int8_inference_check_success_val
             if posttrain_method_val:
                 posttrain_inference_method_actual[cid] = posttrain_method_val
+            pruning_requested[cid] = pruning_requested_val
+            pruning_applied[cid] = pruning_applied_val
+            pruning_amount_requested[cid] = pruning_amount_requested_val
+            pruning_amount_applied[cid] = pruning_amount_applied_val
+            if pruning_method_val:
+                pruning_method_used[cid] = pruning_method_val
+            pruning_active_during_training[cid] = pruning_active_val
+            if pruning_skip_reason_val:
+                pruning_skip_reason[cid] = pruning_skip_reason_val
             transport_dtype_requested[cid] = transport_requested_val
             transport_dtype_actual[cid] = transport_actual_val
             transport_payload_kind[cid] = transport_payload_kind_val
@@ -620,6 +643,13 @@ class FedAvgQuant(FedAvg):
             "int8_convert_error": int8_convert_error,
             "int8_inference_check_success": int8_inference_check_success,
             "posttrain_inference_method_actual": posttrain_inference_method_actual,
+            "pruning_requested": pruning_requested,
+            "pruning_applied": pruning_applied,
+            "pruning_amount_requested": pruning_amount_requested,
+            "pruning_amount_applied": pruning_amount_applied,
+            "pruning_method": pruning_method_used,
+            "pruning_active_during_training": pruning_active_during_training,
+            "pruning_skip_reason": pruning_skip_reason,
             "transport_dtype_requested": transport_dtype_requested,
             "transport_dtype_actual": transport_dtype_actual,
             "transport_payload_kind": transport_payload_kind,
