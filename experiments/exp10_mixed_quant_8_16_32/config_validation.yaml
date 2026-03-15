@@ -1,0 +1,95 @@
+experiment:
+  name: "exp10_mixed_quant_8_16_32_val"
+  rounds: 3
+  seed: 42
+  dropout_mode: "docker"
+
+clients:
+  count: 10
+  profiles:
+    - {id: 0, profile: "strong", mem_limit_mb: 2560, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 1, profile: "strong", mem_limit_mb: 2560, cpu_cores: 1.0, data_fraction: 0.0}
+    - {id: 2, profile: "medium", mem_limit_mb: 1536, cpu_cores: 0.75, data_fraction: 0.0}
+    - {id: 3, profile: "medium", mem_limit_mb: 1536, cpu_cores: 0.75, data_fraction: 0.0}
+    - {id: 4, profile: "medium", mem_limit_mb: 1536, cpu_cores: 0.75, data_fraction: 0.0}
+    - {id: 5, profile: "medium", mem_limit_mb: 1536, cpu_cores: 0.75, data_fraction: 0.0}
+    - {id: 6, profile: "weak", mem_limit_mb: 1024, cpu_cores: 0.75, data_fraction: 0.0}
+    - {id: 7, profile: "weak", mem_limit_mb: 1024, cpu_cores: 0.75, data_fraction: 0.0}
+    - {id: 8, profile: "weak", mem_limit_mb: 1024, cpu_cores: 0.75, data_fraction: 0.0}
+    - {id: 9, profile: "extreme_weak", mem_limit_mb: 768, cpu_cores: 0.25, data_fraction: 0.0}
+
+data:
+  dataset: "cifar10"
+  partition: "iid"
+  dirichlet_alpha: 0.1
+  reduced_fraction: 0.2
+  use_32: false
+  eval_fraction: 0.10
+  max_eval_samples_per_client: 0
+
+quantization:
+  mode: "mixed"
+  fixed_bits: 32
+  lowp_dtype: "bf16"
+  int8_impl: "static"
+  int8_backend: "auto"
+  calibration_samples: 128
+  int8_postcheck_enabled: true
+  int8_postcheck_backend: "x86"
+  int8_postcheck_after_fit: true
+  int8_postcheck_probe_client_id: 7
+  int8_postcheck_probe_round: 1
+  int8_postcheck_eval_batches: 1
+  transport_mode: "delta"
+  transport_int8_scheme: "symm_per_tensor_v1"
+  transport_require_decode_success: true
+  transport_per_client:
+    0: "fp32"
+    1: "fp32"
+    2: "fp32"
+    3: "fp32"
+    4: "fp32"
+    5: "fp32"
+    6: "int8"
+    7: "int8"
+    8: "int8"
+    9: "int8"
+  per_client:
+    0: 32
+    1: 32
+    2: 16
+    3: 16
+    4: 16
+    5: 16
+    6: 16
+    7: 16
+    8: 16
+    9: 16
+
+fl:
+  local_epochs: 2
+  batch_size: 8
+  per_profile_batch:
+    strong: 8
+    medium: 8
+    weak: 8
+    extreme_weak: 8
+  num_workers: 0
+  pin_memory: false
+  optimizer: "sgd"
+  lr: 0.01
+  momentum: 0.9
+  weight_decay: 0.0001
+  freeze_features: false
+  min_clients_per_round: 6
+  aggregate_bn_buffers: false
+
+rl:
+  algorithm: "ppo"
+  total_timesteps: 50
+  n_steps: 1
+
+logging:
+  level: "info"
+  metrics_dir: "outputs/exp10_mixed_quant_8_16_32/metrics"
+  plots_dir: "outputs/exp10_mixed_quant_8_16_32/plots"

@@ -202,7 +202,29 @@ Client-level resources for Experiment 9:
 |------------|---------|-----------|--------------|
 | 0-1 | `strong` | 1.0 | 2560 MB |
 | 2-5 | `medium` | 0.75 | 1536 MB |
-| 6-8 | `weak` | 0.5 | 1024 MB |
+| 6-8 | `weak` | 0.75 | 1024 MB |
+| 9 | `extreme_weak` | 0.25 | 768 MB |
+
+---
+
+## Experiment 10
+
+Experiment 10 (`exp10_mixed_quant_8_16_32`) configuration summary:
+
+| Item | Value |
+|------|-------|
+| Number of clients | 10 |
+| Number of rounds | 50 |
+| Avg time per client (per round, approx.) | 800s |
+| Data partitioning | IID (mixed policy: clients 0-1 FP32 train, clients 2-9 BF16 train, clients 6-9 INT8 delta transport) |
+
+Client-level resources for Experiment 10:
+
+| Client IDs | Profile | CPU limit | Memory limit |
+|------------|---------|-----------|--------------|
+| 0-1 | `strong` | 1.0 | 2560 MB |
+| 2-5 | `medium` | 0.75 | 1536 MB |
+| 6-8 | `weak` | 0.75 | 1024 MB |
 | 9 | `extreme_weak` | 0.25 | 768 MB |
 
 ---

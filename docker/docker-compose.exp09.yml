@@ -118,7 +118,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: '0.75'
           memory: 1536m
     restart: 'no'
   client_03:
@@ -146,7 +146,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: '0.75'
           memory: 1536m
     restart: 'no'
   client_04:
@@ -174,7 +174,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: '0.75'
           memory: 1536m
     restart: 'no'
   client_05:
@@ -230,7 +230,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: '0.75'
           memory: 1024m
     restart: 'no'
   client_07:
@@ -258,7 +258,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: '0.75'
           memory: 1024m
     restart: 'no'
   client_08:
@@ -286,7 +286,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: '0.75'
           memory: 1024m
     restart: 'no'
   client_09:

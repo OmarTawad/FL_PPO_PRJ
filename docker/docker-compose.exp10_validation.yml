@@ -1,18 +1,18 @@
-name: fl_ppo_exp09_val
+name: fl_ppo_exp10_val
 services:
   server:
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
     image: fl_ppo_server:latest
-    container_name: fl_server_exp09val
+    container_name: fl_server_exp10val
     hostname: server
     environment:
-      CONFIG_PATH: experiments/exp09_uniform_int8_all/config_validation.yaml
-      PARTITION_FILE: /data/partitions_10_iid_uniform_exp09.json
+      CONFIG_PATH: experiments/exp10_mixed_quant_8_16_32/config_validation.yaml
+      PARTITION_FILE: /data/partitions_10_iid_mixed_quant_exp10.json
       DATA_ROOT: /data
       SERVER_PORT: '8080'
-      OUTPUTS_DIR: /outputs/exp09_uniform_int8_all
+      OUTPUTS_DIR: /outputs/exp10_mixed_quant_8_16_32
       NUM_ROUNDS: '3'
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -24,7 +24,7 @@ services:
     - ../outputs:/outputs
     - ../experiments:/app/experiments:ro
     networks:
-    - fl_exp09val_net
+    - fl_exp10val_net
     deploy:
       resources:
         limits:
@@ -42,12 +42,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_00_exp09val
+    container_name: fl_client_00_exp10val
     environment:
       CLIENT_ID: '0'
       SERVER_ADDR: server:8080
-      CONFIG_PATH: experiments/exp09_uniform_int8_all/config_validation.yaml
-      PARTITION_FILE: /data/partitions_10_iid_uniform_exp09.json
+      CONFIG_PATH: experiments/exp10_mixed_quant_8_16_32/config_validation.yaml
+      PARTITION_FILE: /data/partitions_10_iid_mixed_quant_exp10.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -56,7 +56,7 @@ services:
     - ../data:/data:ro
     - ../experiments:/app/experiments:ro
     networks:
-    - fl_exp09val_net
+    - fl_exp10val_net
     depends_on:
     - server
     deploy:
@@ -70,12 +70,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_01_exp09val
+    container_name: fl_client_01_exp10val
     environment:
       CLIENT_ID: '1'
       SERVER_ADDR: server:8080
-      CONFIG_PATH: experiments/exp09_uniform_int8_all/config_validation.yaml
-      PARTITION_FILE: /data/partitions_10_iid_uniform_exp09.json
+      CONFIG_PATH: experiments/exp10_mixed_quant_8_16_32/config_validation.yaml
+      PARTITION_FILE: /data/partitions_10_iid_mixed_quant_exp10.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -84,7 +84,7 @@ services:
     - ../data:/data:ro
     - ../experiments:/app/experiments:ro
     networks:
-    - fl_exp09val_net
+    - fl_exp10val_net
     depends_on:
     - server
     deploy:
@@ -98,12 +98,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_02_exp09val
+    container_name: fl_client_02_exp10val
     environment:
       CLIENT_ID: '2'
       SERVER_ADDR: server:8080
-      CONFIG_PATH: experiments/exp09_uniform_int8_all/config_validation.yaml
-      PARTITION_FILE: /data/partitions_10_iid_uniform_exp09.json
+      CONFIG_PATH: experiments/exp10_mixed_quant_8_16_32/config_validation.yaml
+      PARTITION_FILE: /data/partitions_10_iid_mixed_quant_exp10.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -112,7 +112,7 @@ services:
     - ../data:/data:ro
     - ../experiments:/app/experiments:ro
     networks:
-    - fl_exp09val_net
+    - fl_exp10val_net
     depends_on:
     - server
     deploy:
@@ -126,12 +126,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_03_exp09val
+    container_name: fl_client_03_exp10val
     environment:
       CLIENT_ID: '3'
       SERVER_ADDR: server:8080
-      CONFIG_PATH: experiments/exp09_uniform_int8_all/config_validation.yaml
-      PARTITION_FILE: /data/partitions_10_iid_uniform_exp09.json
+      CONFIG_PATH: experiments/exp10_mixed_quant_8_16_32/config_validation.yaml
+      PARTITION_FILE: /data/partitions_10_iid_mixed_quant_exp10.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -140,7 +140,7 @@ services:
     - ../data:/data:ro
     - ../experiments:/app/experiments:ro
     networks:
-    - fl_exp09val_net
+    - fl_exp10val_net
     depends_on:
     - server
     deploy:
@@ -154,12 +154,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_04_exp09val
+    container_name: fl_client_04_exp10val
     environment:
       CLIENT_ID: '4'
       SERVER_ADDR: server:8080
-      CONFIG_PATH: experiments/exp09_uniform_int8_all/config_validation.yaml
-      PARTITION_FILE: /data/partitions_10_iid_uniform_exp09.json
+      CONFIG_PATH: experiments/exp10_mixed_quant_8_16_32/config_validation.yaml
+      PARTITION_FILE: /data/partitions_10_iid_mixed_quant_exp10.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -168,7 +168,7 @@ services:
     - ../data:/data:ro
     - ../experiments:/app/experiments:ro
     networks:
-    - fl_exp09val_net
+    - fl_exp10val_net
     depends_on:
     - server
     deploy:
@@ -182,12 +182,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_05_exp09val
+    container_name: fl_client_05_exp10val
     environment:
       CLIENT_ID: '5'
       SERVER_ADDR: server:8080
-      CONFIG_PATH: experiments/exp09_uniform_int8_all/config_validation.yaml
-      PARTITION_FILE: /data/partitions_10_iid_uniform_exp09.json
+      CONFIG_PATH: experiments/exp10_mixed_quant_8_16_32/config_validation.yaml
+      PARTITION_FILE: /data/partitions_10_iid_mixed_quant_exp10.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -196,7 +196,7 @@ services:
     - ../data:/data:ro
     - ../experiments:/app/experiments:ro
     networks:
-    - fl_exp09val_net
+    - fl_exp10val_net
     depends_on:
     - server
     deploy:
@@ -210,12 +210,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_06_exp09val
+    container_name: fl_client_06_exp10val
     environment:
       CLIENT_ID: '6'
       SERVER_ADDR: server:8080
-      CONFIG_PATH: experiments/exp09_uniform_int8_all/config_validation.yaml
-      PARTITION_FILE: /data/partitions_10_iid_uniform_exp09.json
+      CONFIG_PATH: experiments/exp10_mixed_quant_8_16_32/config_validation.yaml
+      PARTITION_FILE: /data/partitions_10_iid_mixed_quant_exp10.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -224,7 +224,7 @@ services:
     - ../data:/data:ro
     - ../experiments:/app/experiments:ro
     networks:
-    - fl_exp09val_net
+    - fl_exp10val_net
     depends_on:
     - server
     deploy:
@@ -238,12 +238,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_07_exp09val
+    container_name: fl_client_07_exp10val
     environment:
       CLIENT_ID: '7'
       SERVER_ADDR: server:8080
-      CONFIG_PATH: experiments/exp09_uniform_int8_all/config_validation.yaml
-      PARTITION_FILE: /data/partitions_10_iid_uniform_exp09.json
+      CONFIG_PATH: experiments/exp10_mixed_quant_8_16_32/config_validation.yaml
+      PARTITION_FILE: /data/partitions_10_iid_mixed_quant_exp10.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -252,7 +252,7 @@ services:
     - ../data:/data:ro
     - ../experiments:/app/experiments:ro
     networks:
-    - fl_exp09val_net
+    - fl_exp10val_net
     depends_on:
     - server
     deploy:
@@ -266,12 +266,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_08_exp09val
+    container_name: fl_client_08_exp10val
     environment:
       CLIENT_ID: '8'
       SERVER_ADDR: server:8080
-      CONFIG_PATH: experiments/exp09_uniform_int8_all/config_validation.yaml
-      PARTITION_FILE: /data/partitions_10_iid_uniform_exp09.json
+      CONFIG_PATH: experiments/exp10_mixed_quant_8_16_32/config_validation.yaml
+      PARTITION_FILE: /data/partitions_10_iid_mixed_quant_exp10.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -280,7 +280,7 @@ services:
     - ../data:/data:ro
     - ../experiments:/app/experiments:ro
     networks:
-    - fl_exp09val_net
+    - fl_exp10val_net
     depends_on:
     - server
     deploy:
@@ -294,12 +294,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.client
     image: fl_ppo_client:latest
-    container_name: fl_client_09_exp09val
+    container_name: fl_client_09_exp10val
     environment:
       CLIENT_ID: '9'
       SERVER_ADDR: server:8080
-      CONFIG_PATH: experiments/exp09_uniform_int8_all/config_validation.yaml
-      PARTITION_FILE: /data/partitions_10_iid_uniform_exp09.json
+      CONFIG_PATH: experiments/exp10_mixed_quant_8_16_32/config_validation.yaml
+      PARTITION_FILE: /data/partitions_10_iid_mixed_quant_exp10.json
       DATA_ROOT: /data
       OMP_NUM_THREADS: '1'
       MKL_NUM_THREADS: '1'
@@ -308,7 +308,7 @@ services:
     - ../data:/data:ro
     - ../experiments:/app/experiments:ro
     networks:
-    - fl_exp09val_net
+    - fl_exp10val_net
     depends_on:
     - server
     deploy:
@@ -318,5 +318,5 @@ services:
           memory: 768m
     restart: 'no'
 networks:
-  fl_exp09val_net:
+  fl_exp10val_net:
     driver: bridge
