@@ -51,6 +51,10 @@ from src.compression.transport_int8 import (
     dequantize_delta_int8_per_tensor,
 )
 from src.heterogeneity.dropout import DropoutTracker
+from src.heterogeneity.profiles import get_profile
+from src.rl.reward import compute_reward
+from src.rl.state import StateBuilder
+from src.rl.runtime_controller import PPORuntimeController
 
 log = logging.getLogger(__name__)
 
@@ -107,10 +111,47 @@ class FedAvgQuant(FedAvg):
         self.current_quant_assignments: Optional[Dict[str, int]] = None
         # Last configure_fit() assignment snapshot: logical client id -> quant bits.
         self._last_fit_quant_assignment: Dict[str, int] = {}
+        # Last configure_fit() transport assignment snapshot: logical client id -> dtype.
+        self._last_fit_transport_assignment: Dict[str, str] = {}
         # Last configure_fit() proxy-to-logical mapping for observability.
         self._last_fit_proxy_map: Dict[str, str] = {}
+        # Last configure_fit() raw adaptive action by logical client ID.
+        self._last_ppo_actions: Dict[str, int] = {}
         # gRPC mode uses opaque proxy IDs; map them to logical client IDs 0..N-1.
         self._proxy_to_logical: Dict[str, int] = {}
+        # Adaptive runtime controller state.
+        self._ppo_controller: Optional[PPORuntimeController] = None
+        self._state_builder: Optional[StateBuilder] = None
+        self._profile_reliability: Dict[int, float] = {}
+        self._weak_client_ids: set[int] = set()
+        self._ppo_prev_accuracy: float = 0.0
+        self._ppo_prev_delta: float = 0.0
+        self._ppo_last_quant_bits: Dict[int, int] = {
+            i: 0 for i in range(self.cfg.clients.count)
+        }
+        self._ppo_last_obs: Optional[np.ndarray] = None
+        self._ppo_last_action: Optional[np.ndarray] = None
+        self._ppo_last_value: float = 0.0
+        self._ppo_last_log_prob: float = 0.0
+
+        if self.cfg.quantization.mode == "adaptive":
+            self._ppo_controller = PPORuntimeController(self.cfg)
+            self._state_builder = StateBuilder(
+                n_clients=self.cfg.n_clients,
+                profiles=self.cfg.clients.profiles,
+                dropout_tracker=self.dropout_tracker,
+                total_rounds=self.cfg.experiment.rounds,
+            )
+            for profile_cfg in self.cfg.clients.profiles:
+                cid_int = int(profile_cfg.id)
+                if str(profile_cfg.profile).strip().lower() in ("weak", "extreme_weak"):
+                    self._weak_client_ids.add(cid_int)
+                reliability = 1.0
+                try:
+                    reliability = float(get_profile(profile_cfg.profile).reliability)
+                except KeyError:
+                    reliability = 1.0
+                self._profile_reliability[cid_int] = reliability
 
     # ── Public: env.reset() ────────────────────────────────────────────────────
 
@@ -120,8 +161,17 @@ class FedAvgQuant(FedAvg):
         self.last_round_log = {}
         self.current_quant_assignments = None
         self._last_fit_quant_assignment = {}
+        self._last_fit_transport_assignment = {}
         self._last_fit_proxy_map = {}
+        self._last_ppo_actions = {}
         self._proxy_to_logical = {}
+        self._ppo_prev_accuracy = 0.0
+        self._ppo_prev_delta = 0.0
+        self._ppo_last_quant_bits = {i: 0 for i in range(self.cfg.clients.count)}
+        self._ppo_last_obs = None
+        self._ppo_last_action = None
+        self._ppo_last_value = 0.0
+        self._ppo_last_log_prob = 0.0
 
     # ── configure_fit ──────────────────────────────────────────────────────────
 
@@ -178,7 +228,12 @@ class FedAvgQuant(FedAvg):
                 proxy_map[proxy_cid] = logical_cid
 
             self._last_fit_quant_assignment = round_assignment
+            self._last_fit_transport_assignment = {
+                cid: str(self.cfg.quantization.transport_per_client.get(int(cid), "fp32"))
+                for cid in round_assignment.keys()
+            }
             self._last_fit_proxy_map = proxy_map
+            self._last_ppo_actions = {}
             details = [
                 {
                     "proxy_cid": proxy_cid,
@@ -192,43 +247,12 @@ class FedAvgQuant(FedAvg):
             )
             return updated
 
-        if mode == "adaptive" and self.current_quant_assignments is not None:
-            # Per-client assignment from PPO env
-            all_clients = client_manager.all()   # Dict[str, ClientProxy]
-            instructions = []
-            round_assignment: Dict[str, int] = {}
-            proxy_map: Dict[str, str] = {}
-            for cid_str, bits in self.current_quant_assignments.items():
-                if cid_str in all_clients:
-                    config: Dict[str, Scalar] = {
-                        "quant_bits": bits,
-                        "round": server_round,
-                    }
-                    proxy = all_clients[cid_str]
-                    instructions.append((proxy, FitIns(parameters, config)))
-                    round_assignment[str(cid_str)] = int(bits)
-                    proxy_map[str(proxy.cid)] = str(cid_str)
-            if not instructions:
-                log.warning(
-                    f"[Strategy] round={server_round} adaptive mode: "
-                    f"no valid client CIDs in current_quant_assignments. "
-                    f"Falling back to all clients FP32."
-                )
-                # Safety fallback: select all clients FP32
-                for cid_str, proxy in all_clients.items():
-                    instructions.append(
-                        (proxy, FitIns(parameters, {"quant_bits": 32, "round": server_round}))
-                    )
-                    round_assignment[str(cid_str)] = 32
-                    proxy_map[str(proxy.cid)] = str(cid_str)
-            self._last_fit_quant_assignment = round_assignment
-            self._last_fit_proxy_map = proxy_map
-            log.info(
-                f"[Strategy] round={server_round} ADAPTIVE fit: "
-                f"selected={list(self.current_quant_assignments.keys())} "
-                f"bits={list(self.current_quant_assignments.values())}"
+        if mode == "adaptive":
+            return self._configure_fit_adaptive(
+                server_round=server_round,
+                parameters=parameters,
+                client_manager=client_manager,
             )
-            return instructions
 
         else:
             # Fixed mode: use FedAvg selection + uniform bits
@@ -256,7 +280,12 @@ class FedAvgQuant(FedAvg):
                 round_assignment[logical_cid] = int(quant_bits)
                 proxy_map[proxy_cid] = logical_cid
             self._last_fit_quant_assignment = round_assignment
+            self._last_fit_transport_assignment = {
+                cid: str(self.cfg.quantization.transport_per_client.get(int(cid), "fp32"))
+                for cid in round_assignment.keys()
+            }
             self._last_fit_proxy_map = proxy_map
+            self._last_ppo_actions = {}
 
             cids = [str(cp.cid) for cp, _ in updated]
             log.info(
@@ -351,6 +380,7 @@ class FedAvgQuant(FedAvg):
         transport_dtype_requested: Dict[str, str] = {}
         transport_dtype_actual: Dict[str, str] = {}
         transport_payload_kind: Dict[str, str] = {}
+        policy_action_requested: Dict[str, int] = {}
         decode_success: Dict[str, int] = {}
         decode_error: Dict[str, str] = {}
         aggregation_input_dtype_after_decode: Dict[str, str] = {}
@@ -447,6 +477,7 @@ class FedAvgQuant(FedAvg):
             transport_payload_kind_val = str(
                 m.get("transport_payload_kind", "model_fp32")
             ).strip()
+            policy_action_val = int(m.get("policy_action_requested", -1))
             transport_tensor_count_val = int(m.get("transport_tensor_count", 0))
             decode_success_val = int(
                 transport_decode_success_by_proxy.get(
@@ -504,6 +535,7 @@ class FedAvgQuant(FedAvg):
             transport_dtype_requested[cid] = transport_requested_val
             transport_dtype_actual[cid] = transport_actual_val
             transport_payload_kind[cid] = transport_payload_kind_val
+            policy_action_requested[cid] = policy_action_val
             transport_tensor_count[cid] = transport_tensor_count_val
             decode_success[cid] = decode_success_val
             aggregation_input_dtype_after_decode[cid] = agg_input_dtype_val
@@ -594,6 +626,9 @@ class FedAvgQuant(FedAvg):
         )
         global_acc = float(eval_result.accuracy)
         global_loss = float(eval_result.loss)
+        prev_accuracy_for_reward = (
+            float(self._prev_accuracy) if self._prev_accuracy is not None else 0.0
+        )
 
         accuracy_delta = global_acc - (
             self._prev_accuracy if self._prev_accuracy is not None else global_acc
@@ -604,6 +639,58 @@ class FedAvgQuant(FedAvg):
             f"[Strategy] round={server_round} global_acc={global_acc:.4f} "
             f"delta={accuracy_delta:+.4f} dropout_frac={dropout_fraction:.2f}"
         )
+
+        ppo_reward: Optional[float] = None
+        ppo_reward_components: Dict[str, float] = {}
+        ppo_update_info: Dict[str, int] = {}
+        if (
+            self.cfg.quantization.mode == "adaptive"
+            and self._ppo_controller is not None
+            and self._state_builder is not None
+            and self._ppo_last_obs is not None
+            and self._ppo_last_action is not None
+        ):
+            selected_for_reward = sorted(
+                self._last_fit_quant_assignment.keys(),
+                key=lambda cid: int(cid),
+            )
+            ppo_reward, ppo_reward_components = compute_reward(
+                acc_t=global_acc,
+                acc_prev=prev_accuracy_for_reward,
+                selected_client_ids=selected_for_reward,
+                dropout_client_ids=dropout_client_ids,
+                quant_assignments_bits=self._last_fit_quant_assignment,
+                alpha=self.cfg.rl.reward_alpha,
+                beta=self.cfg.rl.reward_beta,
+                gamma=self.cfg.rl.reward_gamma_var,
+            )
+            next_obs = self._state_builder.build(
+                round_idx=server_round,
+                prev_global_acc=global_acc,
+                prev_acc_delta=accuracy_delta,
+                last_quant_bits=self._ppo_last_quant_bits,
+            )
+            done = server_round >= int(self.cfg.experiment.rounds)
+            update_result = self._ppo_controller.update(
+                obs=self._ppo_last_obs,
+                action=self._ppo_last_action,
+                reward=float(ppo_reward),
+                next_obs=next_obs,
+                done=done,
+                value=float(self._ppo_last_value),
+                log_prob=float(self._ppo_last_log_prob),
+            )
+            ppo_update_info = update_result.to_dict()
+            self._ppo_prev_accuracy = float(global_acc)
+            self._ppo_prev_delta = float(accuracy_delta)
+            self._ppo_last_obs = next_obs
+            log.info(
+                "[Strategy] round=%d PPO reward=%.5f update_applied=%d updates_total=%d",
+                server_round,
+                float(ppo_reward),
+                int(ppo_update_info.get("update_applied", 0)),
+                int(ppo_update_info.get("updates_total", 0)),
+            )
 
         # 4. Build + write JSON log
         mean_loss = (
@@ -622,7 +709,9 @@ class FedAvgQuant(FedAvg):
             "round": server_round,
             "selected_clients": selected_clients,
             "fit_quant_assignment_used": fit_assignment_used,
+            "fit_transport_assignment_used": self._last_fit_transport_assignment,
             "fit_proxy_to_client_id": self._last_fit_proxy_map,
+            "ppo_actions": self._last_ppo_actions,
             "quant_assignments": quant_assignments,
             "actual_quant_method": actual_quant_methods,
             "quant_precision_requested": quant_precision_requested,
@@ -653,6 +742,7 @@ class FedAvgQuant(FedAvg):
             "transport_dtype_requested": transport_dtype_requested,
             "transport_dtype_actual": transport_dtype_actual,
             "transport_payload_kind": transport_payload_kind,
+            "policy_action_requested": policy_action_requested,
             "transport_tensor_count": transport_tensor_count,
             "decode_success": decode_success,
             "decode_error": decode_error,
@@ -663,6 +753,9 @@ class FedAvgQuant(FedAvg):
             "global_accuracy": global_acc,
             "global_loss": global_loss,
             "accuracy_delta": accuracy_delta,
+            "reward": ppo_reward,
+            "reward_components": ppo_reward_components,
+            "ppo_update": ppo_update_info,
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         }
         if fit_failures_log:
@@ -709,6 +802,202 @@ class FedAvgQuant(FedAvg):
         return super().aggregate_evaluate(server_round, results, failures)
 
     # ── Internal helpers ───────────────────────────────────────────────────────
+
+    def _configure_fit_adaptive(
+        self,
+        server_round: int,
+        parameters: Parameters,
+        client_manager: ClientManager,
+    ) -> List[Tuple[ClientProxy, FitIns]]:
+        """
+        Adaptive mode: strategy-side PPO controls client selection and policy.
+
+        Action mapping:
+          0 -> skip
+          1 -> quant_bits=32, transport=fp32
+          2 -> quant_bits=16 (BF16 by config), transport=fp32
+          3 -> quant_bits=16 (BF16 by config), transport=int8
+        """
+        if self._ppo_controller is None or self._state_builder is None:
+            raise RuntimeError(
+                "adaptive mode requested but PPO runtime controller is not initialized"
+            )
+
+        min_required = max(1, int(self.cfg.fl.min_clients_per_round))
+        try:
+            available_now = int(client_manager.num_available())
+        except Exception:
+            available_now = self.cfg.clients.count
+        if available_now < min_required:
+            try:
+                client_manager.wait_for(num_clients=min_required, timeout=30)
+            except Exception:
+                pass
+
+        all_clients = dict(client_manager.all())
+        if not all_clients:
+            log.warning("[Strategy] adaptive mode: no available clients in client_manager")
+            self._last_fit_quant_assignment = {}
+            self._last_fit_transport_assignment = {}
+            self._last_fit_proxy_map = {}
+            self._last_ppo_actions = {
+                str(i): 0 for i in range(self.cfg.clients.count)
+            }
+            return []
+
+        records: List[Tuple[int, str, ClientProxy]] = []
+        used_ids: set[int] = set()
+        for proxy_cid, proxy in all_clients.items():
+            logical_id = self._resolve_logical_client_id_for_fit(
+                proxy_cid=str(proxy_cid),
+                client_proxy=proxy,
+                used_ids=used_ids,
+            )
+            used_ids.add(logical_id)
+            records.append((logical_id, str(proxy_cid), proxy))
+        records.sort(key=lambda item: item[0])
+
+        available_ids = {logical_id for logical_id, _, _ in records}
+        obs = self._state_builder.build(
+            round_idx=max(0, server_round - 1),
+            prev_global_acc=float(self._ppo_prev_accuracy),
+            prev_acc_delta=float(self._ppo_prev_delta),
+            last_quant_bits=self._ppo_last_quant_bits,
+        )
+        action_vector = self._ppo_controller.act(obs=obs, deterministic=False)
+        for cid in range(self.cfg.clients.count):
+            if cid not in available_ids:
+                action_vector[cid] = 0
+
+        selected = [cid for cid in sorted(available_ids) if int(action_vector[cid]) > 0]
+        if len(selected) < min_required:
+            promote_candidates = [
+                cid for cid in sorted(available_ids)
+                if int(action_vector[cid]) == 0
+            ]
+            promote_candidates.sort(
+                key=lambda cid: self._profile_reliability.get(cid, 1.0),
+                reverse=True,
+            )
+            needed = min_required - len(selected)
+            for cid in promote_candidates[:needed]:
+                action_vector[cid] = 1
+            selected = [cid for cid in sorted(available_ids) if int(action_vector[cid]) > 0]
+
+        warmup_rounds = int(self.cfg.quantization.adaptive_bf16_warmup_rounds)
+        warmup_overrides: Dict[int, int] = {}
+        if warmup_rounds > 0 and server_round <= warmup_rounds:
+            for cid in sorted(available_ids):
+                if cid not in self._weak_client_ids:
+                    continue
+                action = int(action_vector[cid])
+                # Keep weak clients on BF16-train policy during warmup.
+                if action == 1:
+                    action_vector[cid] = 2
+                    warmup_overrides[cid] = 2
+
+        round_assignment: Dict[str, int] = {}
+        round_transport: Dict[str, str] = {}
+        proxy_map: Dict[str, str] = {}
+        instructions: List[Tuple[ClientProxy, FitIns]] = []
+        for logical_id, proxy_cid, proxy in records:
+            action = int(action_vector[logical_id])
+            if action <= 0:
+                continue
+            quant_bits, transport_dtype = self._policy_from_action(action)
+            fit_cfg: Dict[str, Scalar] = {
+                "quant_bits": int(quant_bits),
+                "transport_dtype": str(transport_dtype),
+                "policy_action": int(action),
+                "round": int(server_round),
+            }
+            instructions.append((proxy, FitIns(parameters, fit_cfg)))
+            logical_cid = str(logical_id)
+            round_assignment[logical_cid] = int(quant_bits)
+            round_transport[logical_cid] = str(transport_dtype)
+            proxy_map[str(proxy.cid)] = logical_cid
+
+        # Absolute safety fallback if adaptive policy produced no instructions.
+        if not instructions:
+            fallback_records = sorted(
+                records,
+                key=lambda item: self._profile_reliability.get(item[0], 1.0),
+                reverse=True,
+            )[:min_required]
+            for logical_id, proxy_cid, proxy in fallback_records:
+                fit_cfg = {
+                    "quant_bits": 32,
+                    "transport_dtype": "fp32",
+                    "policy_action": 1,
+                    "round": int(server_round),
+                }
+                instructions.append((proxy, FitIns(parameters, fit_cfg)))
+                logical_cid = str(logical_id)
+                action_vector[logical_id] = 1
+                round_assignment[logical_cid] = 32
+                round_transport[logical_cid] = "fp32"
+                proxy_map[str(proxy.cid)] = logical_cid
+
+        value, log_prob = self._ppo_controller.evaluate_action(
+            obs=obs,
+            action=action_vector,
+        )
+        self._ppo_last_obs = obs
+        self._ppo_last_action = np.asarray(action_vector, dtype=np.int64).copy()
+        self._ppo_last_value = float(value)
+        self._ppo_last_log_prob = float(log_prob)
+        self._ppo_last_quant_bits = {
+            cid: self._policy_train_bits_from_action(int(action_vector[cid]))
+            for cid in range(self.cfg.clients.count)
+        }
+
+        self._last_fit_quant_assignment = round_assignment
+        self._last_fit_transport_assignment = round_transport
+        self._last_fit_proxy_map = proxy_map
+        self._last_ppo_actions = {
+            str(cid): int(action_vector[cid]) for cid in range(self.cfg.clients.count)
+        }
+
+        detail_rows = [
+            {
+                "client_id": cid,
+                "action": int(action_vector[cid]),
+                "quant_bits": round_assignment.get(str(cid), 0),
+                "transport_dtype": round_transport.get(str(cid), "skip"),
+            }
+            for cid in range(self.cfg.clients.count)
+        ]
+        log.info(
+            "[Strategy] round=%d ADAPTIVE PPO decisions: %s",
+            server_round,
+            detail_rows,
+        )
+        if warmup_overrides:
+            log.info(
+                "[Strategy] round=%d adaptive_bf16_warmup overrides=%s",
+                server_round,
+                warmup_overrides,
+            )
+        return instructions
+
+    def _policy_from_action(self, action: int) -> Tuple[int, str]:
+        """Translate adaptive action to (quant_bits, transport_dtype)."""
+        if action <= 0:
+            return 0, "skip"
+        if action == 1:
+            return 32, "fp32"
+        if action == 2:
+            return 16, "fp32"
+        if action == 3:
+            return 16, "int8"
+        # Unknown action values are clamped to safe baseline.
+        return 32, "fp32"
+
+    def _policy_train_bits_from_action(self, action: int) -> int:
+        if action <= 0:
+            return 0
+        bits, _ = self._policy_from_action(action)
+        return int(bits)
 
     def _aggregate_fit_delta(
         self,

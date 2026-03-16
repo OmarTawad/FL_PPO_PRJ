@@ -79,6 +79,7 @@ def _encode_transport_payload(
     client_id: int,
     global_params_fp32: List[np.ndarray],
     updated_params_fp32: List[np.ndarray],
+    transport_dtype_override: str = "",
 ) -> Tuple[NDArrays, str, str, str, str, int, int]:
     """
     Encode client return payload per transport policy.
@@ -87,7 +88,11 @@ def _encode_transport_payload(
       (payload, requested_dtype, actual_dtype, payload_kind,
        transport_meta_json, transport_meta_present, tensor_count)
     """
-    requested_dtype = _transport_dtype_for_client(cfg, client_id)
+    override = str(transport_dtype_override).strip().lower()
+    if override in ("fp32", "int8"):
+        requested_dtype = override
+    else:
+        requested_dtype = _transport_dtype_for_client(cfg, client_id)
     if cfg.quantization.transport_mode != "delta":
         return (
             updated_params_fp32,
@@ -409,6 +414,10 @@ class FlowerClient(fl.client.NumPyClient):
         # 2. Extract server-side config
         quant_bits = int(config.get("quant_bits", 32))
         fl_round = int(config.get("round", 0))
+        transport_dtype_override = str(
+            config.get("transport_dtype", "")
+        ).strip().lower()
+        policy_action_requested = int(config.get("policy_action", -1))
         requested_precision = _requested_precision_label(
             quant_bits, self.cfg.quantization.lowp_dtype
         )
@@ -418,7 +427,9 @@ class FlowerClient(fl.client.NumPyClient):
             f"[Client {self.client_id}] round={fl_round} "
             f"quant_bits={quant_bits} requested_precision={requested_precision} "
             f"n_train={len(self.train_indices)} int8_impl={int8_impl} "
-            f"int8_backend={self.cfg.quantization.int8_backend}"
+            f"int8_backend={self.cfg.quantization.int8_backend} "
+            f"transport_override={transport_dtype_override or 'none'} "
+            f"policy_action={policy_action_requested}"
         )
 
         # 3. Build calibration loader only for static INT8
@@ -731,6 +742,7 @@ class FlowerClient(fl.client.NumPyClient):
                 self.client_id,
                 global_params_fp32=global_params_fp32,
                 updated_params_fp32=dropped_params_fp32,
+                transport_dtype_override=transport_dtype_override,
             )
             log.warning(
                 f"[Client {self.client_id}] OOM during training "
@@ -771,6 +783,7 @@ class FlowerClient(fl.client.NumPyClient):
                     "pruning_active_during_training": pruning_active_during_training,
                     "pruning_skip_reason": pruning_skip_reason,
                     "transport_mode": self.cfg.quantization.transport_mode,
+                    "policy_action_requested": policy_action_requested,
                     "transport_dtype_requested": transport_dtype_requested,
                     "transport_dtype_actual": transport_dtype_actual,
                     "transport_payload_kind": transport_payload_kind,
@@ -811,6 +824,7 @@ class FlowerClient(fl.client.NumPyClient):
             self.client_id,
             global_params_fp32=global_params_fp32,
             updated_params_fp32=updated_params,
+            transport_dtype_override=transport_dtype_override,
         )
 
         # result.loss is the final epoch's average loss
@@ -847,6 +861,7 @@ class FlowerClient(fl.client.NumPyClient):
             "pruning_active_during_training": pruning_active_during_training,
             "pruning_skip_reason": pruning_skip_reason,
             "transport_mode": self.cfg.quantization.transport_mode,
+            "policy_action_requested": policy_action_requested,
             "transport_dtype_requested": transport_dtype_requested,
             "transport_dtype_actual": transport_dtype_actual,
             "transport_payload_kind": transport_payload_kind,

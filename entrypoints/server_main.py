@@ -21,11 +21,10 @@ Usage (Docker — via Dockerfile.server):
 
 Mode selection (from config.quantization.mode):
     fixed_fp32 / fixed_fp16 / fixed_int8 / mixed:
-        Server uses FedAvgQuant in FIXED mode — no PPO agent running.
+        Server uses FedAvgQuant in fixed/mixed mode.
     adaptive:
-        Server runs PPO (stable-baselines3) as the RL controller.
-        PPO observes system state each round and outputs per-client quant assignments.
-        PPO runs entirely server-side; clients remain stateless.
+        Server still runs Flower gRPC, but strategy-side PPO controls
+        per-round client selection and client policy at runtime.
 """
 
 from __future__ import annotations
@@ -129,67 +128,6 @@ def _build_strategy(
     )
 
 
-# ── PPO server-side controller ────────────────────────────────────────────────
-
-def _run_adaptive_ppo_server(
-    cfg: Config,
-    server_test_loader: DataLoader,
-    output_dir: Path,
-    server_address: str,
-    n_rounds: int,
-) -> None:
-    """
-    Run server with PPO agent providing adaptive per-client quant assignments.
-
-    The PPO agent uses FLEnv (Gymnasium) which in turn calls run_one_round() 
-    through the existing in-process path. This is correct for adaptive mode:
-    PPO must observe the environment state synchronously within each round.
-
-    Note: True distributed PPO-in-server with gRPC clients requires the PPO
-    trajectory collection to be separated from gRPC transport. For this
-    implementation:
-    - ADAPTIVE mode (adaptive quantization) uses FLEnv in-process 
-    - The FLEnv is extended to communicate with real gRPC clients via
-      a custom ClientManager that wraps the gRPC proxy pool.
-    
-    For the Docker deployment, adaptive mode routes through FLEnv. The
-    server starts gRPC first to accept clients, then the FLEnv sends 
-    instructions through the strategy.
-    
-    PAPER-ALIGNED: PPO runs centrally on server (Assumption A1 in SPEC.md).
-    """
-    from stable_baselines3 import PPO
-    from src.rl.env import FLEnv
-
-    log.info("[Server] Starting ADAPTIVE mode with PPO controller")
-    log.info(f"[Server] PPO will control {cfg.n_clients} clients over {n_rounds} rounds")
-
-    # Build FLEnv — it manages its own client_manager and strategy internally
-    env = FLEnv(cfg, data_root=_get_data_root())
-    obs, _ = env.reset()
-
-    n_steps = max(1, cfg.rl.n_steps)
-    batch_size = min(cfg.rl.batch_size, n_steps)
-
-    ppo_model = PPO(
-        policy=cfg.rl.policy,
-        env=env,
-        verbose=0,
-        n_steps=n_steps,
-        batch_size=batch_size,
-        gamma=cfg.rl.gamma_discount,
-        learning_rate=cfg.rl.learning_rate,
-    )
-    log.info("[Server] PPO model created; starting training")
-    ppo_model.learn(total_timesteps=n_rounds)
-
-    # Save checkpoint
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    ckpt_path = str(output_dir.parent.parent / "checkpoints" / f"ppo_{run_id}")
-    ppo_model.save(ckpt_path)
-    log.info(f"[Server] PPO checkpoint saved: {ckpt_path}.zip")
-
-
 def _get_data_root() -> str:
     """Return data root directory (env var DATA_ROOT or 'data/')."""
     return os.environ.get("DATA_ROOT", "data/")
@@ -209,6 +147,7 @@ def main() -> None:
     # 1. Load config
     cfg = load_config(CONFIG_PATH)
     n_rounds = int(NUM_ROUNDS_ENV) if NUM_ROUNDS_ENV else cfg.experiment.rounds
+    cfg.experiment.rounds = int(n_rounds)
     log.info(f"  Experiment  : {cfg.experiment.name}")
     log.info(f"  Rounds      : {n_rounds}")
     log.info(f"  Clients     : {cfg.n_clients}")
@@ -244,27 +183,19 @@ def main() -> None:
         }
         log.info(f"[Server] Mixed mode: {strategy.current_quant_assignments}")
 
-    # 8. Choose execution path
+    # 8. Start gRPC server (adaptive PPO is strategy-side in live runtime)
     server_address = f"0.0.0.0:{SERVER_PORT}"
-
     if cfg.quantization.mode == "adaptive":
-        # PPO adaptive mode — FLEnv drives the training loop in-process
-        # (server does not call fl.server.start_server in this mode because
-        # FLEnv/PPO drives the loop and uses _MockClientProxy for Docker smoke
-        # tests; for true distributed mode with 50 real gRPC clients, switch
-        # n_rounds in config and let FLEnv connect to the gRPC pool)
-        log.info("[Server] Mode: ADAPTIVE (PPO in-process controller)")
-        _run_adaptive_ppo_server(cfg, server_test_loader, output_dir, server_address, n_rounds)
+        log.info("[Server] Mode: ADAPTIVE (strategy-side PPO runtime)")
     else:
-        # Fixed/mixed mode — start gRPC server and wait for clients to connect
-        log.info(f"[Server] Mode: FIXED ({cfg.quantization.mode}) — starting gRPC server")
-        log.info(f"[Server] Listening on {server_address}, waiting for {cfg.n_clients} clients")
+        log.info(f"[Server] Mode: FIXED ({cfg.quantization.mode})")
+    log.info(f"[Server] Listening on {server_address}, waiting for {cfg.n_clients} clients")
 
-        fl.server.start_server(
-            server_address=server_address,
-            config=ServerConfig(num_rounds=n_rounds),
-            strategy=strategy,
-        )
+    fl.server.start_server(
+        server_address=server_address,
+        config=ServerConfig(num_rounds=n_rounds),
+        strategy=strategy,
+    )
 
     # 9. Post-run: write summary.json
     json_logs = sorted(output_dir.glob("round_*.json"))

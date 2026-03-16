@@ -119,6 +119,7 @@ class QuantizationConfig:
     transport_per_client: Dict[int, str] = field(default_factory=dict)  # fp32 | int8
     transport_int8_scheme: str = "symm_per_tensor_v1"
     transport_require_decode_success: bool = True
+    adaptive_bf16_warmup_rounds: int = 0
     per_client: Optional[Dict[int, int]] = None   # used if mode=mixed
 
     def __post_init__(self):
@@ -178,6 +179,11 @@ class QuantizationConfig:
                 "quantization.transport_mode must be 'model_fp32' or 'delta', "
                 f"got: {self.transport_mode}"
             )
+        if int(self.adaptive_bf16_warmup_rounds) < 0:
+            raise ValueError(
+                "quantization.adaptive_bf16_warmup_rounds must be >= 0"
+            )
+        self.adaptive_bf16_warmup_rounds = int(self.adaptive_bf16_warmup_rounds)
         self.transport_int8_scheme = str(self.transport_int8_scheme).strip().lower()
         if self.transport_int8_scheme != "symm_per_tensor_v1":
             raise ValueError(
@@ -438,6 +444,9 @@ def _parse_quant(raw: dict) -> QuantizationConfig:
         ),
         transport_require_decode_success=bool(
             raw.get("transport_require_decode_success", True)
+        ),
+        adaptive_bf16_warmup_rounds=int(
+            raw.get("adaptive_bf16_warmup_rounds", 0)
         ),
         per_client=per_client,
     )
